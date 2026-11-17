@@ -17,14 +17,58 @@ export interface Post {
   plainText: string;
 }
 
+export interface SearchResult extends Post {
+  snippetHtml: string;
+}
+
 const POSTS_DIR = path.resolve(process.cwd(), 'src/content/posts');
 
-// Убираем базовую Markdown-разметку для чистого поиска по тексту
 function stripMarkdown(md: string): string {
   return md
     .replace(/[#>*_`~\[\]()!-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Формируем фрагмент текста вокруг найденного слова и оборачиваем совпадения в <mark>
+function buildHighlightedSnippet(post: Post, query: string): string {
+  const sourceText = [post.description, post.plainText].filter(Boolean).join(' — ');
+  const lowerText = sourceText.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const matchIndex = lowerText.indexOf(lowerQuery);
+
+  let rawExcerpt = '';
+
+  if (matchIndex === -1) {
+    // Если совпадение было только в заголовке, авторе или рубрике — берем начало описания/текста
+    rawExcerpt = sourceText.slice(0, 180) + (sourceText.length > 180 ? '…' : '');
+  } else {
+    const radius = 85;
+    const start = Math.max(0, matchIndex - radius);
+    const end = Math.min(sourceText.length, matchIndex + query.length + radius);
+
+    const prefix = start > 0 ? '…' : '';
+    const suffix = end < sourceText.length ? '…' : '';
+    rawExcerpt = prefix + sourceText.slice(start, end).trim() + suffix;
+  }
+
+  const safeText = escapeHtml(rawExcerpt);
+  const regex = new RegExp(`(${escapeRegExp(escapeHtml(query))})`, 'gi');
+
+  return safeText.replace(regex, '<mark>$1</mark>');
 }
 
 export async function getAllPosts(): Promise<Post[]> {
@@ -88,24 +132,30 @@ export async function getPostBySlug(slug: string): Promise<Post | null> {
   }
 }
 
-// Динамический поиск по всем полям и содержимому файлов
-export async function searchPosts(query: string): Promise<Post[]> {
-  const trimmed = query.trim().toLowerCase();
+// Поиск с возвратом сниппета с подсветкой
+export async function searchPosts(query: string): Promise<SearchResult[]> {
+  const trimmed = query.trim();
   if (!trimmed) return [];
 
+  const lowerQuery = trimmed.toLowerCase();
   const allPosts = await getAllPosts();
 
-  return allPosts.filter((post) => {
-    const searchable = [
-      post.title,
-      post.description,
-      post.author,
-      post.category,
-      post.plainText,
-    ]
-      .join(' ')
-      .toLowerCase();
+  return allPosts
+    .filter((post) => {
+      const searchable = [
+        post.title,
+        post.description,
+        post.author,
+        post.category,
+        post.plainText,
+      ]
+        .join(' ')
+        .toLowerCase();
 
-    return searchable.includes(trimmed);
-  });
+      return searchable.includes(lowerQuery);
+    })
+    .map((post) => ({
+      ...post,
+      snippetHtml: buildHighlightedSnippet(post, trimmed),
+    }));
 }
