@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { watch, existsSync } from "node:fs";
+import { watch, existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 import { marked } from "marked";
@@ -221,23 +221,14 @@ function buildHighlightedSnippet(post: Post, query: string): string {
   return safeText.replace(regex, "<mark>$1</mark>");
 }
 
-async function getMarkdownFilesRecursively(dir: string): Promise<string[]> {
-  let results: string[] = [];
-  try {
-    const list = await fs.readdir(dir, { withFileTypes: true });
-    for (const file of list) {
-      const resPath = path.resolve(dir, file.name);
-      if (file.isDirectory()) {
-        const subFiles = await getMarkdownFilesRecursively(resPath);
-        results = results.concat(subFiles);
-      } else if (file.isFile() && file.name.endsWith(".md")) {
-        results.push(resPath);
-      }
-    }
-  } catch (error) {
-    // Папка еще не создана
-  }
-  return results;
+function getMarkdownFilesRecursively(dir: string): Promise<string[]> {
+  const entries = readdirSync(dir, {
+    recursive: true,
+    withFileTypes: true
+  });
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.join(entry.parentPath, entry.name));
 }
 
 async function loadPostsFromDisk(): Promise<Post[]> {

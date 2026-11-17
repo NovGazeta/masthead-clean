@@ -31,7 +31,7 @@ const allYears = Array.from(new Set(posts.map((p) => p.pubDate.getFullYear()))).
   (a, b) => b - a,
 );
 
-const defaultYear = allYears[0] || new Date().getFullYear();
+const defaultYear = allYears[0];
 
 // Парсим параметры из URL сегментов ([...slug])
 // Ожидаемые варианты: без параметров, ["2026"], ["2026", "2"]

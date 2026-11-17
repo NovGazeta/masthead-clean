@@ -49,9 +49,10 @@ const utilityLinks = [
         </nav>
 
         <!-- Компактная форма поиска (десктоп) -->
-        <form action="/search" method="get" class="header-search-form" role="search">
+        <form id="quick-form" class="header-search-form" role="search">
           <input
             type="search"
+            id="quick-input"
             name="q"
             value={currentQuery}
             placeholder="Поиск..."
@@ -73,6 +74,21 @@ const utilityLinks = [
             </svg>
           </button>
         </form>
+
+        <script>
+          const form = document.getElementById("quick-form") as HTMLFormElement;
+          const input = document.getElementById("quick-input") as HTMLInputElement;
+
+          if (form && input) {
+            form.addEventListener("submit", (e) => {
+              e.preventDefault();
+              const query = input.value.trim();
+              if (query) {
+                window.location.href = `/search/${encodeURIComponent(query)}`;
+              }
+            });
+          }
+        </script>
 
         <!-- Переключатель темной темы -->
         <button
