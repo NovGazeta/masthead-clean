@@ -44,11 +44,15 @@ const ogImageUrl = image
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
+    <meta http-equiv="X-DNS-Prefetch-Control" content="on" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-icon-180x180.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon/android-icon-192x192.png" />
+    <link rel="icon" type="image/x-icon" href="/favicon/favicon.ico" />
+    <link rel="shortcut icon" type="image/ico" href="/favicon/favicon.ico" />
+    <link rel="manifest" href="/favicon/manifest.json" />
     <link rel="canonical" href={canonicalUrl} />
-
     <!-- Автообнаружение RSS -->
     <link rel="alternate" type="application/rss+xml" title="The Masthead — RSS" href="/rss.xml" />
-
     <!-- Open Graph -->
     <meta property="og:site_name" content={siteName} />
     <meta property="og:locale" content="ru_RU" />
@@ -57,22 +61,18 @@ const ogImageUrl = image
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalUrl} />
     {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
-
     {type === "article" && publishedTime && (
       <meta property="article:published_time" content={publishedTime} />
     )}
     {type === "article" && author && <meta property="article:author" content={author} />}
     {type === "article" && section && <meta property="article:section" content={section} />}
-
     <!-- Twitter / X Cards -->
     <meta name="twitter:card" content={ogImageUrl ? "summary_large_image" : "summary"} />
     <meta name="twitter:title" content={fullTitle} />
     <meta name="twitter:description" content={description} />
     {ogImageUrl && <meta name="twitter:image" content={ogImageUrl} />}
-
     <!-- Структурированные данные JSON-LD -->
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
-
     <!-- Скрипт предотвращения мерцания темы (FOUC) -->
     <script is:inline>
       (function () {
@@ -82,7 +82,6 @@ const ogImageUrl = image
         document.documentElement.setAttribute("data-theme", theme);
       })();
     </script>
-
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

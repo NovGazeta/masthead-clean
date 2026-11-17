@@ -20,6 +20,7 @@ export interface Post {
   authorBio?: string;
   category: string;
   tags: string[];
+  draft: boolean;
   featured: boolean;
   image?: string;
   imageCaption?: string;
@@ -240,18 +241,25 @@ async function loadPostsFromDisk(): Promise<Post[]> {
     const files = await fs.readdir(POSTS_DIR);
     const mdFiles = files.filter((file) => file.endsWith('.md'));
 
-    const posts = await Promise.all(
+    const rawPosts = await Promise.all(
       mdFiles.map(async (filename) => {
         const slug = filename.replace(/\.md$/, '');
         const filePath = path.join(POSTS_DIR, filename);
         const rawFile = await fs.readFile(filePath, 'utf-8');
         const { data, content } = matter(rawFile);
+
+        const isDraft = Boolean(data.draft);
+
+        // В production скрываем черновики
+        if (isDraft && import.meta.env.PROD) {
+          return null;
+        }
+
         const plainText = stripMarkdown(content);
         const parsedHtml = await marked.parse(content);
         const { html, toc } = extractTocAndInjectIds(parsedHtml);
         const authorName = (data.author ?? 'Редакция').trim();
 
-        // Парсинг тегов из frontmatter (массив или строка с запятыми)
         let rawTags: string[] = [];
         if (Array.isArray(data.tags)) {
           rawTags = data.tags.map((t) => String(t).trim()).filter(Boolean);
@@ -269,6 +277,7 @@ async function loadPostsFromDisk(): Promise<Post[]> {
           authorBio: data.authorBio ? String(data.authorBio).trim() : undefined,
           category: data.category ?? 'Общее',
           tags: rawTags,
+          draft: isDraft,
           featured: Boolean(data.featured),
           image: data.image,
           imageCaption: data.imageCaption,
@@ -280,6 +289,7 @@ async function loadPostsFromDisk(): Promise<Post[]> {
       })
     );
 
+    const posts = rawPosts.filter((p): p is Post => p !== null);
     const sorted = posts.sort((a, b) => b.pubDate.valueOf() - a.pubDate.valueOf());
 
     cachedPosts = sorted;
@@ -378,7 +388,6 @@ export async function getAuthorBySlug(
   return { author, posts };
 }
 
-// Сбор всех уникальных тегов
 export async function getAllTags(): Promise<TagSummary[]> {
   const posts = await getAllPosts();
   const tagMap = new Map<string, { name: string; slug: string; count: number }>();
@@ -409,7 +418,6 @@ export async function getPostsByTag(tagSlug: string): Promise<{ tagName: string;
 
   if (matchedPosts.length === 0) return null;
 
-  // Берем оригинальное написание тега из первой найденной статьи
   const samplePost = matchedPosts.find((p) => p.tags.some((t) => slugifyTag(t) === safeSlug));
   const tagName = samplePost?.tags.find((t) => slugifyTag(t) === safeSlug) ?? safeSlug;
 
