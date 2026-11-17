@@ -6,7 +6,7 @@ interface Props {
 }
 
 const { post } = Astro.props;
-const { slug, title, description, pubDate, author, category, image } = post;
+const { slug, title, description, pubDate, author, category, image, readingTime } = post;
 
 const formattedDate = pubDate?.toLocaleDateString("ru-RU", {
   day: "numeric",
@@ -23,7 +23,7 @@ const formattedDate = pubDate?.toLocaleDateString("ru-RU", {
     </h1>
     <p class="excerpt">{description}</p>
     <div class="meta-label">
-      Автор: {author} &mdash; {formattedDate}
+      Автор: {author} &mdash; {formattedDate} &bull; {readingTime}
     </div>
   </div>
 

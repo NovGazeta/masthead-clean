@@ -55,7 +55,7 @@ const results = query ? await searchPosts(query) : [];
                 </h2>
                 <p class="snippet" set:html={post.snippetHtml} />
                 <div class="meta-label">
-                  {post.author} &bull; {formattedDate}
+                  {post.author} &bull; {formattedDate} &bull; {post.readingTime}
                 </div>
               </div>
 
