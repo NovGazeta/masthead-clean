@@ -88,6 +88,8 @@ const fallbackPosts = otherPosts.filter(
 );
 
 const relatedPosts = [...sameRubricPosts, ...fallbackPosts].slice(0, 3);
+
+Astro.response.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
 ---
 
 <BaseLayout
