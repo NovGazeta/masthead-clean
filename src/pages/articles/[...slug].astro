@@ -69,7 +69,7 @@ const articleJsonLd: Record<string, unknown> = {
   },
   publisher: {
     "@type": "Organization",
-    name: "THE MASTHEAD",
+    name: "THE Журнал",
     url: baseUrl,
   },
   ...(absoluteImageUrl ? { image: [absoluteImageUrl] } : {}),
@@ -446,7 +446,7 @@ const relatedPosts = [...sameRubricPosts, ...fallbackPosts].slice(0, 3);
     text-align: right;
   }
 
-  /* Блок оглавления в редакционном стиле Masthead */
+  /* Блок оглавления в редакционном стиле */
   .toc-box {
     margin-bottom: 2.5rem;
     padding: 1.25rem 1.5rem;

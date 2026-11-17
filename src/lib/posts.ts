@@ -354,7 +354,7 @@ export async function getAllAuthors(): Promise<AuthorSummary[]> {
       map.set(post.authorSlug, {
         name: post.authors,
         slug: post.authorSlug,
-        bio: post.authorBio ?? 'Постоянный автор и обозреватель издания The Masthead.',
+        bio: post.authorBio ?? 'Постоянный автор и обозреватель издания The Журнал.',
         postCount: 1,
         latestPostDate: post.pubDate,
         rubrics: new Set([post.rubric]),
