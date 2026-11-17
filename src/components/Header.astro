@@ -200,13 +200,6 @@ const categories = [
             </a>
           </li>
         ))}
-        {categories.map((cat) => (
-          <li>
-            <a href={cat.slug} class={`meta-label ${isActive(cat.slug) ? "active" : ""}`}>
-              {cat.name}
-            </a>
-          </li>
-        ))}
       </ul>
     </nav>
   </div>
