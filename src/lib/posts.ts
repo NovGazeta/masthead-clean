@@ -4,6 +4,12 @@ import path from 'node:path';
 import matter from 'gray-matter';
 import { marked } from 'marked';
 
+export interface TocItem {
+  id: string;
+  text: string;
+  level: 2 | 3;
+}
+
 export interface Post {
   slug: string;
   title: string;
@@ -15,6 +21,7 @@ export interface Post {
   image?: string;
   imageCaption?: string;
   readingTime: string;
+  toc: TocItem[];
   htmlContent: string;
   plainText: string;
 }
@@ -64,7 +71,6 @@ function stripMarkdown(md: string): string {
     .trim();
 }
 
-// Расчет времени чтения (~180 слов в минуту для русского текста)
 function calculateReadingTime(plainText: string, customReadingTime?: string): string {
   if (customReadingTime && customReadingTime.trim()) {
     return customReadingTime.trim();
@@ -75,6 +81,60 @@ function calculateReadingTime(plainText: string, customReadingTime?: string): st
   const minutes = Math.max(1, Math.ceil(words / wordsPerMinute));
 
   return `${minutes} мин чтения`;
+}
+
+// Генерация чистого URL-якоря с поддержкой кириллицы
+function slugifyHeading(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/<[^>]+>/g, '')
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+// Извлечение заголовков H2/H3 и добавление им атрибутов id в HTML
+function extractTocAndInjectIds(rawHtml: string): { html: string; toc: TocItem[] } {
+  const toc: TocItem[] = [];
+  const usedIds = new Map<string, number>();
+
+  const html = rawHtml.replace(
+    /<h([23])([^>]*)>([\s\S]*?)<\/h\1>/gi,
+    (_match, levelStr: string, attrs: string, innerHtml: string) => {
+      const level = Number(levelStr) as 2 | 3;
+      const cleanText = innerHtml.replace(/<[^>]+>/g, '').trim();
+
+      if (!cleanText) {
+        return `<h${level}${attrs}>${innerHtml}</h${level}>`;
+      }
+
+      // Проверяем, не задан ли уже id вручную
+      const existingIdMatch = attrs.match(/\bid=["']([^"']+)["']/i);
+      let id = existingIdMatch ? existingIdMatch[1] : slugifyHeading(cleanText) || 'section';
+
+      // Гарантируем уникальность id на странице
+      const count = usedIds.get(id) ?? 0;
+      usedIds.set(id, count + 1);
+      if (count > 0) {
+        id = `${id}-${count + 1}`;
+      }
+
+      toc.push({
+        id,
+        text: cleanText,
+        level,
+      });
+
+      if (existingIdMatch) {
+        return `<h${level}${attrs}>${innerHtml}</h${level}>`;
+      }
+
+      return `<h${level}${attrs} id="${id}">${innerHtml}</h${level}>`;
+    }
+  );
+
+  return { html, toc };
 }
 
 function escapeHtml(str: string): string {
@@ -128,6 +188,8 @@ async function loadPostsFromDisk(): Promise<Post[]> {
         const rawFile = await fs.readFile(filePath, 'utf-8');
         const { data, content } = matter(rawFile);
         const plainText = stripMarkdown(content);
+        const parsedHtml = await marked.parse(content);
+        const { html, toc } = extractTocAndInjectIds(parsedHtml);
 
         return {
           slug,
@@ -140,7 +202,8 @@ async function loadPostsFromDisk(): Promise<Post[]> {
           image: data.image,
           imageCaption: data.imageCaption,
           readingTime: calculateReadingTime(plainText, data.readingTime),
-          htmlContent: await marked.parse(content),
+          toc,
+          htmlContent: html,
           plainText,
         } satisfies Post;
       })

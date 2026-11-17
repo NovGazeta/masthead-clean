@@ -21,13 +21,19 @@ export const GET: APIRoute = async ({ site, url }) => {
     ? posts[0].pubDate.toISOString()
     : new Date().toISOString();
 
-  // Статические страницы
+  // Статические и служебные разделы
   const staticUrls = [
     {
       loc: `${baseUrl}/`,
       lastmod: latestPostDate,
       changefreq: 'daily',
       priority: '1.0',
+    },
+    {
+      loc: `${baseUrl}/archive`,
+      lastmod: latestPostDate,
+      changefreq: 'weekly',
+      priority: '0.7',
     },
     {
       loc: `${baseUrl}/about`,
