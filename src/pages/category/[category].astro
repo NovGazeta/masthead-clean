@@ -4,59 +4,84 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
 import ArticleCard from "../../components/ArticleCard.astro";
 
 export async function getStaticPaths() {
-    const categoryMap: Record<string, string> = {
-        culture: "Культура",
-        technology: "Технологии",
-        essays: "Эссе",
-        design: "Дизайн",
+  const categoryMap: Record<string, string> = {
+    culture: "Культура",
+    technology: "Технологии",
+    essays: "Эссе",
+    design: "Дизайн",
+  };
+
+  const posts = await getCollection("posts");
+
+  return Object.entries(categoryMap).map(([slug, label]) => {
+    const filteredPosts = posts
+      .filter((p) => p.data.category.trim().toLowerCase() === label.toLowerCase())
+      .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+
+    return {
+      params: { category: slug },
+      props: {
+        label,
+        posts: filteredPosts,
+      },
     };
-
-    const posts = await getCollection("posts");
-
-    return Object.entries(categoryMap).map(([slug, label]) => ({
-        params: { category: slug },
-        props: {
-            label,
-            posts: posts.filter((p) => p.data.category.toLowerCase() === label.toLowerCase()),
-        },
-    }));
+  });
 }
 
 const { label, posts } = Astro.props;
 ---
 
 <BaseLayout title={`Рубрика: ${label}`}>
-    <div class="cat-header">
-        <span class="meta-label">Архив рубрики</span>
-        <h1>{label}</h1>
-    </div>
+  <div class="cat-header">
+    <span class="meta-label">Архив рубрики</span>
+    <h1>{label}</h1>
+  </div>
 
+  {posts.length > 0 ? (
     <div class="articles-grid">
-        {posts.map((post) => (
-            <ArticleCard post={post} />
-        ))}
+      {posts.map((post) => (
+        <ArticleCard post={post} />
+      ))}
     </div>
+  ) : (
+    <p class="empty-state">В этой рубрике пока нет опубликованных материалов.</p>
+  )}
 </BaseLayout>
 
 <style>
-    .cat-header {
-        border-bottom: 2px solid var(--border-dark);
-        padding-bottom: 1.25rem;
-        margin-bottom: 2.5rem;
-    }
-    .cat-header h1 {
-        font-size: 2.5rem;
-        font-weight: 500;
-        margin-top: 0.25rem;
-    }
+  .cat-header {
+    border-bottom: 2px solid var(--border-dark);
+    padding-bottom: 1.25rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .cat-header h1 {
+    font-size: 2.5rem;
+    font-weight: 500;
+    margin-top: 0.25rem;
+  }
+
+  .articles-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2.5rem;
+  }
+
+  .empty-state {
+    color: var(--text-secondary);
+    font-style: italic;
+    font-size: 1.15rem;
+  }
+
+  @media (max-width: 900px) {
     .articles-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 2.5rem;
+      grid-template-columns: repeat(2, 1fr);
     }
-    @media (max-width: 768px) {
-        .articles-grid {
-            grid-template-columns: 1fr;
-        }
+  }
+
+  @media (max-width: 600px) {
+    .articles-grid {
+      grid-template-columns: 1fr;
     }
+  }
 </style>

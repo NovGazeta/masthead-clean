@@ -3,7 +3,7 @@ import node from '@astrojs/node';
 
 // https://astro.build/config
 export default defineConfig({
-  output: 'server', // Enables SSR across all routes
+  output: 'static', //'server', // Enables SSR across all routes
   adapter: node({
     mode: 'standalone'
   })

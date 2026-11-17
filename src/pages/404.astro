@@ -1,0 +1,120 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="404 — Страница не найдена"
+  description="Запрашиваемый материал не найден в архиве издания."
+>
+  <section class="not-found">
+    <div class="error-box">
+      <span class="meta-label error-code">Ошибка 404 &bull; Архивная справка</span>
+      <h1>Страница не найдена</h1>
+      <p class="lead">
+        Возможно, этот выпуск был перемещен, удален из архива или в адресе ссылки допущена опечатка.
+      </p>
+
+      <div class="actions">
+        <a href="/" class="btn-primary meta-label">
+          Вернуться на главную
+        </a>
+        <a href="/about" class="btn-secondary meta-label">
+          О проекте
+        </a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .not-found {
+    max-width: 640px;
+    margin: 3rem auto 4rem;
+    text-align: center;
+  }
+
+  .error-box {
+    border-top: 2px solid var(--border-dark);
+    border-bottom: 2px solid var(--border-dark);
+    padding: 3.5rem 1.5rem;
+  }
+
+  .error-code {
+    color: var(--accent-color);
+    display: block;
+    margin-bottom: 1rem;
+  }
+
+  .not-found h1 {
+    font-size: clamp(2.2rem, 5vw, 3.5rem);
+    font-weight: 500;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    margin-bottom: 1.25rem;
+  }
+
+  .lead {
+    font-size: 1.15rem;
+    color: var(--text-secondary);
+    font-style: italic;
+    margin-bottom: 2.25rem;
+    line-height: 1.65;
+  }
+
+  .actions {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .btn-primary {
+    background-color: var(--border-dark);
+    color: var(--bg-color);
+    padding: 0.85rem 1.5rem;
+    border: 1px solid var(--border-dark);
+    transition: opacity 0.2s ease;
+  }
+
+  .btn-primary:hover {
+    opacity: 0.85;
+  }
+
+  .btn-secondary {
+    background-color: transparent;
+    color: var(--text-primary);
+    padding: 0.85rem 1.5rem;
+    border: 1px solid var(--border-color);
+    transition:
+      border-color 0.2s ease,
+      background-color 0.2s ease;
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--border-dark);
+    background-color: var(--surface-color);
+    opacity: 1;
+  }
+
+  @media (max-width: 600px) {
+    .not-found {
+      margin: 1.5rem auto 2.5rem;
+    }
+
+    .error-box {
+      padding: 2.5rem 1rem;
+    }
+
+    .actions {
+      flex-direction: column;
+      width: 100%;
+    }
+
+    .btn-primary,
+    .btn-secondary {
+      width: 100%;
+      text-align: center;
+    }
+  }
+</style>

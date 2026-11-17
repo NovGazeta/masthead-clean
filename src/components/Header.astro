@@ -6,7 +6,19 @@ const today = new Date().toLocaleDateString("ru-RU", {
   day: "numeric",
 });
 
-// Служебные ссылки (для правого угла десктопа и верха мобильного меню)
+const pathname = Astro.url.pathname;
+
+// Нормализуем путь (убираем завершающий слэш для точного сравнения)
+const normalizePath = (path: string) =>
+  path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path;
+const currentPath = normalizePath(pathname);
+
+const isActive = (slug: string) => {
+  const normalizedSlug = normalizePath(slug);
+  return currentPath === normalizedSlug;
+};
+
+// Служебные ссылки
 const utilityLinks = [
   { name: "Главная", slug: "/" },
   { name: "О проекте", slug: "/about" },
@@ -31,10 +43,10 @@ const categories = [
       </div>
 
       <div class="top-actions">
-        <!-- Служебные ссылки прижаты к правому краю (перед кнопкой темы) на десктопе -->
+        <!-- Служебные ссылки (десктоп) -->
         <nav class="utility-nav" aria-label="Служебная навигация">
           {utilityLinks.map((link) => (
-            <a href={link.slug} class="meta-label">
+            <a href={link.slug} class={`meta-label ${isActive(link.slug) ? "active" : ""}`}>
               {link.name}
             </a>
           ))}
@@ -117,12 +129,12 @@ const categories = [
       <p class="tagline">Журнал о цифровом ремесле, культуре и медленном чтении</p>
     </div>
 
-    <!-- Десктопная навигация под логотипом (только рубрики) -->
+    <!-- Десктопная навигация под логотипом -->
     <nav class="desktop-nav" aria-label="Рубрики">
       <ul>
         {categories.map((cat) => (
           <li>
-            <a href={cat.slug} class="meta-label">
+            <a href={cat.slug} class={`meta-label ${isActive(cat.slug) ? "active" : ""}`}>
               {cat.name}
             </a>
           </li>
@@ -130,19 +142,19 @@ const categories = [
       </ul>
     </nav>
 
-    <!-- Мобильное выпадающее меню (открывается по клику на бургер) -->
+    <!-- Мобильное выпадающее меню -->
     <nav id="main-nav" class="mobile-nav" aria-label="Мобильное меню">
       <ul>
         {utilityLinks.map((link) => (
           <li class="mobile-utility-item">
-            <a href={link.slug} class="meta-label">
+            <a href={link.slug} class={`meta-label ${isActive(link.slug) ? "active" : ""}`}>
               {link.name}
             </a>
           </li>
         ))}
         {categories.map((cat) => (
           <li>
-            <a href={cat.slug} class="meta-label">
+            <a href={cat.slug} class={`meta-label ${isActive(cat.slug) ? "active" : ""}`}>
               {cat.name}
             </a>
           </li>
@@ -202,12 +214,24 @@ const categories = [
     gap: 1.25rem;
   }
 
-  .utility-nav a {
+  /* Стили ссылок и активного состояния */
+  .utility-nav a,
+  .desktop-nav a,
+  .mobile-nav a {
     color: var(--text-secondary);
     transition: color 0.2s ease;
   }
 
-  .utility-nav a:hover {
+  .desktop-nav a {
+    color: var(--text-primary);
+  }
+
+  .utility-nav a:hover,
+  .utility-nav a.active,
+  .desktop-nav a:hover,
+  .desktop-nav a.active,
+  .mobile-nav a:hover,
+  .mobile-nav a.active {
     color: var(--accent-color);
     opacity: 1;
   }
@@ -281,15 +305,6 @@ const categories = [
     gap: 2rem;
   }
 
-  .desktop-nav a {
-    color: var(--text-primary);
-  }
-
-  .desktop-nav a:hover {
-    color: var(--accent-color);
-    opacity: 1;
-  }
-
   /* Мобильная навигация скрыта на десктопе */
   .mobile-nav {
     display: none;
@@ -304,7 +319,7 @@ const categories = [
     .issue-num,
     .utility-nav,
     .desktop-nav {
-      display: none !important; /* Жестко скрываем все десктопные элементы */
+      display: none !important;
     }
 
     .mobile-menu-btn {
@@ -315,7 +330,6 @@ const categories = [
       padding: 1.5rem 0;
     }
 
-    /* Мобильное меню по умолчанию скрыто, показывается при добавлении .is-open */
     .mobile-nav {
       display: none;
       border-bottom: 2px solid var(--border-dark);
