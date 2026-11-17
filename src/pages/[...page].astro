@@ -35,7 +35,11 @@ const paginatedPosts = allPosts.slice(startIndex, startIndex + ARTICLES_PER_PAGE
 const featuredPost = currentPage === 1 && paginatedPosts.length > 0 ? paginatedPosts[0] : null;
 const regularPosts = currentPage === 1 ? paginatedPosts.slice(1) : paginatedPosts;
 
-Astro.response.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
+if (!import.meta.env.DEV)
+  Astro.response.headers.set(
+    "Cache-Control",
+    "public, s-maxage=3600, stale-while-revalidate=86400",
+  );
 ---
 
 <BaseLayout title={currentPage > 1 ? `Статьи — Страница ${currentPage}` : "Главная страница"}>

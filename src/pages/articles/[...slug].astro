@@ -1,5 +1,6 @@
 ---
-import { getAllPosts, getPostBySlug, slugifyTag } from "@/lib/posts";
+import { getAllPosts, getPostBySlug, slugifyTag, parseAuthors } from "@/lib/posts";
+import { toSlug } from "@/lib/translit";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import ArticleCard from "@/components/ArticleCard.astro";
 
@@ -19,7 +20,6 @@ const {
   title,
   subtitle,
   pubDate,
-  authors,
   authorSlug,
   rubric,
   genre,
@@ -30,6 +30,8 @@ const {
   toc,
   htmlContent,
 } = post;
+
+const authors = parseAuthors(post?.authors || "");
 
 const formattedDate = pubDate.toLocaleDateString("ru-RU", {
   day: "numeric",
@@ -65,7 +67,7 @@ const articleJsonLd: Record<string, unknown> = {
   },
   author: {
     "@type": "Person",
-    name: authors,
+    name: authors[0],
   },
   publisher: {
     "@type": "Organization",
@@ -89,7 +91,11 @@ const fallbackPosts = otherPosts.filter(
 
 const relatedPosts = [...sameRubricPosts, ...fallbackPosts].slice(0, 3);
 
-Astro.response.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
+if (!import.meta.env.DEV)
+  Astro.response.headers.set(
+    "Cache-Control",
+    "public, s-maxage=3600, stale-while-revalidate=86400",
+  );
 ---
 
 <BaseLayout
@@ -98,7 +104,7 @@ Astro.response.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-
   image={image}
   type="article"
   publishedTime={isoDate}
-  author={authors}
+  author={authors[0]}
   section={rubric}
   jsonLd={articleJsonLd}
 >
@@ -119,9 +125,12 @@ Astro.response.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-
 
       <div class="meta-label byline">
         Текст:{" "}
-        <a href={`/author/${authorSlug}`} class="author-byline-link">
-          {authors}
-        </a>{" "}
+        {authors?.length > 0 &&
+          authors.map((author) => (
+            <a href={`/author/${toSlug(author.name)}`} class="author-byline-link">
+              {author.name}
+            </a>
+          ))}{" "}
         &bull; Опубликовано: {formattedDate} &bull; {readingTime}
       </div>
     </header>

@@ -159,7 +159,8 @@ const paginatedResults = allMatches.slice(startIndex, startIndex + RESULTS_PER_P
 // Базовый путь для пагинации поиска в ЧПУ формате: /search/запрос
 const searchBasePath = query ? `/search/${encodeURIComponent(query)}` : "/search";
 
-Astro.response.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
+if (!import.meta.env.DEV)
+  Astro.response.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
 ---
 
 <BaseLayout

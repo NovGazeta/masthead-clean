@@ -40,10 +40,11 @@ function pluralizeArticles(count: number): string {
   return `${count} публикаций`;
 }
 
-Astro.response.headers.set(
-  "Cache-Control",
-  "public, s-maxage=86400, stale-while-revalidate=604800",
-);
+if (!import.meta.env.DEV)
+  Astro.response.headers.set(
+    "Cache-Control",
+    "public, s-maxage=86400, stale-while-revalidate=604800",
+  );
 ---
 
 <BaseLayout title={`${author.name} — Автор`} description={author.bio}>

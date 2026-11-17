@@ -1,6 +1,6 @@
 ---
 import { type Post, slugifyTag, parseAuthors } from "@/lib/posts";
-import { toSlug, fromSlug } from "@/lib/translit";
+import { toSlug } from "@/lib/translit";
 
 interface Props {
   post: Post;
@@ -28,7 +28,7 @@ const formattedDate = post.pubDate.toLocaleDateString("ru-RU", {
     )}
     <span class="meta-label">
       {authors?.length > 0 &&
-        authors.map((author) => <a href={`/author/${toSlug(author.name)}`}>{author.name}</a>)}
+        authors.map((author) => <a href={`/author/${toSlug(author.name)}`}>{author.name}</a>)}{" "}
       &bull; {formattedDate} &bull; {post.readingTime}
     </span>
   </div>
