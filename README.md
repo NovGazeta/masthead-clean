@@ -1,5 +1,5 @@
 # masthead-clean
 
-Astro Newspaper Starter
+Astro.js Newspaper Starter
 
-[masthead-clean.vercel.app](https://masthead-clean.vercel.app).
+Demo: [masthead-clean.vercel.app](https://masthead-clean.vercel.app)
