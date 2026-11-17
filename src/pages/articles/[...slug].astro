@@ -689,4 +689,13 @@ const relatedPosts = [...sameRubricPosts, ...fallbackPosts].slice(0, 3);
       grid-template-columns: 1fr;
     }
   }
+
+  /* Ограничение максимальных размеров для любых изображений в контенте статьи */
+  .prose :global(img) {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 2rem auto;
+    border: 1px solid var(--border-color);
+  }
 </style>
