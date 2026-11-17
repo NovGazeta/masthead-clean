@@ -224,7 +224,7 @@ function buildHighlightedSnippet(post: Post, query: string): string {
 function getMarkdownFilesRecursively(dir: string): Promise<string[]> {
   const entries = readdirSync(dir, {
     recursive: true,
-    withFileTypes: true
+    withFileTypes: true,
   });
   return entries
     .filter((entry) => entry.isFile())
