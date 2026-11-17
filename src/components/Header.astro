@@ -7,8 +7,8 @@ const today = new Date().toLocaleDateString("ru-RU", {
 });
 
 const pathname = Astro.url.pathname;
+const currentQuery = Astro.url.searchParams.get("q") ?? "";
 
-// Нормализуем путь (убираем завершающий слэш для точного сравнения)
 const normalizePath = (path: string) =>
   path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path;
 const currentPath = normalizePath(pathname);
@@ -18,13 +18,11 @@ const isActive = (slug: string) => {
   return currentPath === normalizedSlug;
 };
 
-// Служебные ссылки
 const utilityLinks = [
   { name: "Главная", slug: "/" },
   { name: "О проекте", slug: "/about" },
 ];
 
-// Тематические рубрики
 const categories = [
   { name: "Культура", slug: "/category/culture" },
   { name: "Технологии", slug: "/category/technology" },
@@ -51,6 +49,32 @@ const categories = [
             </a>
           ))}
         </nav>
+
+        <!-- Компактная форма поиска (десктоп) -->
+        <form action="/search" method="get" class="header-search-form" role="search">
+          <input
+            type="search"
+            name="q"
+            value={currentQuery}
+            placeholder="Поиск..."
+            aria-label="Поиск по сайту"
+          />
+          <button type="submit" aria-label="Искать" title="Найти">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </button>
+        </form>
 
         <!-- Переключатель темной темы -->
         <button
@@ -144,6 +168,30 @@ const categories = [
 
     <!-- Мобильное выпадающее меню -->
     <nav id="main-nav" class="mobile-nav" aria-label="Мобильное меню">
+      <!-- Форма поиска внутри мобильного меню -->
+      <form action="/search" method="get" class="mobile-search-form" role="search">
+        <input
+          type="search"
+          name="q"
+          value={currentQuery}
+          placeholder="Поиск по статьям..."
+          aria-label="Поиск по сайту"
+        />
+        <button type="submit" aria-label="Искать">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+      </form>
+
       <ul>
         {utilityLinks.map((link) => (
           <li class="mobile-utility-item">
@@ -206,15 +254,14 @@ const categories = [
   .top-actions {
     display: flex;
     align-items: center;
-    gap: 1.25rem;
+    gap: 1rem;
   }
 
   .utility-nav {
     display: flex;
-    gap: 1.25rem;
+    gap: 1.15rem;
   }
 
-  /* Стили ссылок и активного состояния */
   .utility-nav a,
   .desktop-nav a,
   .mobile-nav a {
@@ -234,6 +281,49 @@ const categories = [
   .mobile-nav a.active {
     color: var(--accent-color);
     opacity: 1;
+  }
+
+  /* Десктопная форма поиска в шапке */
+  .header-search-form {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    height: 34px;
+    padding: 0 0.5rem;
+    transition: border-color 0.2s ease;
+  }
+
+  .header-search-form:focus-within {
+    border-color: var(--border-dark);
+  }
+
+  .header-search-form input {
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    width: 145px;
+    outline: none;
+  }
+
+  .header-search-form input::placeholder {
+    color: var(--text-secondary);
+  }
+
+  .header-search-form button {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding-left: 0.25rem;
+  }
+
+  .header-search-form button:hover {
+    color: var(--accent-color);
   }
 
   .icon-btn {
@@ -291,7 +381,6 @@ const categories = [
     font-size: clamp(0.92rem, 2.5vw, 1.05rem);
   }
 
-  /* Десктопная навигация */
   .desktop-nav {
     border-bottom: 2px solid var(--border-dark);
     padding: 0.75rem 0;
@@ -305,19 +394,24 @@ const categories = [
     gap: 2rem;
   }
 
-  /* Мобильная навигация скрыта на десктопе */
   .mobile-nav {
     display: none;
   }
 
-  /* Медиа-запрос для мобильных устройств (до 768px) */
+  /* Адаптив для планшетов и смартфонов */
+  @media (max-width: 860px) {
+    .issue-num {
+      display: none;
+    }
+  }
+
   @media (max-width: 768px) {
     .masthead {
       margin-bottom: 1.75rem;
     }
 
-    .issue-num,
     .utility-nav,
+    .header-search-form,
     .desktop-nav {
       display: none !important;
     }
@@ -338,6 +432,30 @@ const categories = [
 
     .mobile-nav.is-open {
       display: block;
+    }
+
+    .mobile-search-form {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.65rem 0.25rem;
+    }
+
+    .mobile-search-form input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .mobile-search-form button {
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      padding: 0 0.5rem;
+      cursor: pointer;
     }
 
     .mobile-nav ul {
