@@ -25,12 +25,6 @@ interface MonthGroup {
   posts: Post[];
 }
 
-interface YearGroup {
-  year: number;
-  totalCount: number;
-  months: MonthGroup[];
-}
-
 // 1. Собираем все доступные года по убыванию
 const allYears = Array.from(new Set(posts.map((p) => p.pubDate.getFullYear()))).sort(
   (a, b) => b - a,
@@ -46,7 +40,7 @@ const selectedYear = queryYear ? parseInt(queryYear, 10) : defaultYear;
 const queryPage = url.searchParams.get("page");
 const currentPage = Math.max(1, parseInt(queryPage || "1", 10));
 
-const POSTS_PER_PAGE = 20; // Лимит статей на страницу внутри выбранного года
+const POSTS_PER_PAGE = 20; // 20 статей на странице
 
 // 3. Фильтруем статьи строго по выбранному году на сервере
 const yearPosts = posts.filter((p) => p.pubDate.getFullYear() === selectedYear);
@@ -85,6 +79,22 @@ function pluralizeIssues(count: number): string {
   }
   return `${count} публикаций`;
 }
+
+// Генерация массива страниц для красивой пагинации (например: 1, 2, ..., 5, 6, 7)
+function getPageNumbers(current: number, total: number) {
+  const delta = 2;
+  const range: (number | string)[] = [];
+  for (let i = 1; i <= total; i++) {
+    if (i === 1 || i === total || (i >= current - delta && i <= current + delta)) {
+      range.push(i);
+    } else if (range[range.length - 1] !== "...") {
+      range.push("...");
+    }
+  }
+  return range;
+}
+
+const pageNumbers = getPageNumbers(currentPage, totalPages);
 ---
 
 <BaseLayout
@@ -176,7 +186,7 @@ function pluralizeIssues(count: number): string {
           </div>
         </section>
 
-        {/* Серверная пагинация */}
+        {/* Прямая пагинация с номерами страниц */}
         {totalPages > 1 && (
           <nav class="pagination" aria-label="Пагинация архива">
             {currentPage > 1 ? (
@@ -187,9 +197,20 @@ function pluralizeIssues(count: number): string {
               <span class="page-link disabled">&larr; Назад</span>
             )}
 
-            <span class="page-info meta-label">
-              Страница {currentPage} из {totalPages}
-            </span>
+            <div class="page-numbers">
+              {pageNumbers.map((p) =>
+                p === "..." ? (
+                  <span class="page-dots meta-label">...</span>
+                ) : (
+                  <a
+                    href={`/archive?year=${selectedYear}&page=${p}`}
+                    class={`page-num meta-label ${p === currentPage ? "is-active" : ""}`}
+                  >
+                    {p}
+                  </a>
+                ),
+              )}
+            </div>
 
             {currentPage < totalPages ? (
               <a href={`/archive?year=${selectedYear}&page=${currentPage + 1}`} class="page-link">
@@ -271,12 +292,11 @@ function pluralizeIssues(count: number): string {
     opacity: 1;
   }
 
-  /* Стили для активной кнопки выбранного года */
   .year-pill.is-active {
     background-color: var(--border-dark);
-    color: var(--accent-color); /* Выделяем текст цветом акцента */
+    color: var(--accent-color);
     border-color: var(--border-dark);
-    font-weight: 1000;
+    font-weight: 500;
   }
 
   .total-badge {
@@ -313,7 +333,6 @@ function pluralizeIssues(count: number): string {
     gap: 2.5rem;
   }
 
-  /* Двухколоночная сетка месяца в духе газетной подшивки */
   .month-block {
     display: grid;
     grid-template-columns: 180px 1fr;
@@ -338,7 +357,6 @@ function pluralizeIssues(count: number): string {
     color: var(--text-secondary);
   }
 
-  /* Список выпусков внутри месяца */
   .issues-list {
     list-style: none;
     padding: 0;
@@ -399,7 +417,7 @@ function pluralizeIssues(count: number): string {
     font-size: 0.7rem;
   }
 
-  /* Пагинация */
+  /* Пагинация с номерами */
   .pagination {
     display: flex;
     align-items: center;
@@ -407,6 +425,44 @@ function pluralizeIssues(count: number): string {
     margin-top: 4rem;
     padding-top: 1.5rem;
     border-top: 2px solid var(--border-dark);
+  }
+
+  .page-numbers {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .page-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 0.4rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+    color: var(--text-primary);
+    text-decoration: none;
+    transition: all 0.2s ease;
+  }
+
+  .page-num:hover {
+    border-color: var(--border-dark);
+    color: var(--accent-color);
+    opacity: 1;
+  }
+
+  .page-num.is-active {
+    background-color: var(--border-dark);
+    color: var(--accent-color);
+    border-color: var(--border-dark);
+    font-weight: 500;
+  }
+
+  .page-dots {
+    padding: 0 0.2rem;
+    color: var(--text-secondary);
   }
 
   .page-link {
@@ -430,10 +486,6 @@ function pluralizeIssues(count: number): string {
     opacity: 0.4;
     cursor: not-allowed;
     background-color: transparent;
-  }
-
-  .page-info {
-    color: var(--text-secondary);
   }
 
   .empty-archive {
@@ -475,6 +527,15 @@ function pluralizeIssues(count: number): string {
       justify-content: flex-start;
       gap: 0.75rem;
       margin-top: 0.2rem;
+    }
+
+    .pagination {
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .page-numbers {
+      order: -1;
     }
   }
 </style>
