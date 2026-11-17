@@ -37,6 +37,9 @@ const baseUrl = (Astro.site?.toString() || Astro.url.origin).replace(/\/$/, "");
 const postUrl = new URL(`/posts/${encodeURIComponent(post.slug)}`, baseUrl).toString();
 const isoDate = pubDate.toISOString();
 
+// Ссылка для шеринга в Telegram
+const telegramShareUrl = `https://t.me/share/url?url=${encodeURIComponent(postUrl)}&text=${encodeURIComponent(title)}`;
+
 const absoluteImageUrl = image
   ? image.startsWith("http://") || image.startsWith("https://")
     ? image
@@ -91,7 +94,7 @@ const relatedPosts = [...sameCategoryPosts, ...fallbackPosts].slice(0, 3);
   section={category}
   jsonLd={articleJsonLd}
 >
-  <!-- Индикатор прогресса чтения (только на странице статьи) -->
+  <!-- Индикатор прогресса чтения -->
   <div class="reading-progress-track" aria-hidden="true">
     <div id="reading-progress-bar" class="reading-progress-bar"></div>
   </div>
@@ -114,6 +117,76 @@ const relatedPosts = [...sameCategoryPosts, ...fallbackPosts].slice(0, 3);
     )}
 
     <div class="prose" set:html={htmlContent} />
+
+    <!-- Панель шеринга и копирования ссылки -->
+    <footer class="share-bar" aria-label="Поделиться публикацией">
+      <span class="meta-label share-title">Поделиться материалом</span>
+
+      <div class="share-actions">
+        <a
+          href={telegramShareUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="share-btn meta-label"
+          aria-label="Поделиться в Telegram"
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+          <span>Telegram</span>
+        </a>
+
+        <button
+          id="copy-link-btn"
+          type="button"
+          class="share-btn meta-label"
+          data-url={postUrl}
+          aria-label="Скопировать ссылку на статью"
+        >
+          <svg
+            class="icon-copy"
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <svg
+            class="icon-check"
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span id="copy-link-label">Скопировать ссылку</span>
+        </button>
+      </div>
+    </footer>
   </article>
 
   {relatedPosts.length > 0 && (
@@ -134,6 +207,7 @@ const relatedPosts = [...sameCategoryPosts, ...fallbackPosts].slice(0, 3);
 </BaseLayout>
 
 <script>
+  // 1. Индикатор прогресса чтения
   const article = document.getElementById("post-article");
   const progressBar = document.getElementById("reading-progress-bar");
 
@@ -171,6 +245,40 @@ const relatedPosts = [...sameCategoryPosts, ...fallbackPosts].slice(0, 3);
 
   window.addEventListener("resize", updateReadingProgress, { passive: true });
   updateReadingProgress();
+
+  // 2. Копирование ссылки в буфер обмена
+  const copyBtn = document.getElementById("copy-link-btn");
+  const copyLabel = document.getElementById("copy-link-label");
+  let resetTimer: number | undefined;
+
+  copyBtn?.addEventListener("click", async () => {
+    const urlToCopy = copyBtn.getAttribute("data-url") || window.location.href;
+
+    try {
+      await navigator.clipboard.writeText(urlToCopy);
+    } catch {
+      // Резервный способ для старых браузеров или HTTP без HTTPS
+      const tempInput = document.createElement("input");
+      tempInput.value = urlToCopy;
+      document.body.appendChild(tempInput);
+      tempInput.select();
+      document.execCommand("copy");
+      document.body.removeChild(tempInput);
+    }
+
+    copyBtn.classList.add("is-copied");
+    if (copyLabel) {
+      copyLabel.textContent = "Ссылка скопирована";
+    }
+
+    window.clearTimeout(resetTimer);
+    resetTimer = window.setTimeout(() => {
+      copyBtn.classList.remove("is-copied");
+      if (copyLabel) {
+        copyLabel.textContent = "Скопировать ссылку";
+      }
+    }, 2500);
+  });
 </script>
 
 <style>
@@ -272,8 +380,66 @@ const relatedPosts = [...sameCategoryPosts, ...fallbackPosts].slice(0, 3);
     margin: 2rem 0;
   }
 
+  /* Минималистичная панель шеринга */
+  .share-bar {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .share-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .share-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 0.95rem;
+    border: 1px solid var(--border-color);
+    background-color: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition:
+      border-color 0.2s ease,
+      background-color 0.2s ease,
+      color 0.2s ease;
+  }
+
+  .share-btn:hover {
+    border-color: var(--border-dark);
+    background-color: var(--surface-color);
+    opacity: 1;
+  }
+
+  .share-btn .icon-check {
+    display: none;
+  }
+
+  .share-btn.is-copied {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+
+  .share-btn.is-copied .icon-copy {
+    display: none;
+  }
+
+  .share-btn.is-copied .icon-check {
+    display: inline-block;
+  }
+
+  /* Блок «Читайте также» */
   .related-section {
-    margin-top: 4.5rem;
+    margin-top: 4rem;
     padding-top: 2rem;
     border-top: 2px solid var(--border-dark);
   }
@@ -317,6 +483,20 @@ const relatedPosts = [...sameCategoryPosts, ...fallbackPosts].slice(0, 3);
 
     .prose :global(p:first-of-type::first-letter) {
       font-size: 3rem;
+    }
+
+    .share-bar {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .share-actions {
+      width: 100%;
+    }
+
+    .share-btn {
+      flex: 1;
+      justify-content: center;
     }
 
     .related-section {
