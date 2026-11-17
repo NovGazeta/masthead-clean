@@ -122,14 +122,6 @@ const relatedPosts = [...sameRubricPosts, ...fallbackPosts].slice(0, 3);
         </a>{" "}
         &bull; Опубликовано: {formattedDate} &bull; {readingTime}
       </div>
-
-      {source && (
-        <div class="article-source-link">
-          <a href={source} target="_blank" rel="noopener noreferrer" class="meta-label">
-            Источник публикации &rarr;
-          </a>
-        </div>
-      )}
     </header>
 
     {image && (
@@ -437,16 +429,6 @@ const relatedPosts = [...sameRubricPosts, ...fallbackPosts].slice(0, 3);
     border-top: 1px solid var(--border-color);
     border-bottom: 1px solid var(--border-color);
     padding: 0.75rem 0;
-  }
-
-  .article-source-link {
-    margin-top: 0.75rem;
-  }
-
-  .article-source-link a {
-    color: var(--accent-color);
-    text-decoration: underline;
-    text-underline-offset: 2px;
   }
 
   .post-hero {
