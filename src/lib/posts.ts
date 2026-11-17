@@ -3,6 +3,7 @@ import { watch, existsSync } from 'node:fs';
 import path from 'node:path';
 import matter from 'gray-matter';
 import { marked } from 'marked';
+import { toSlug, fromSlug } from './translit';
 
 export interface TocItem {
   id: string;
@@ -96,43 +97,20 @@ function ensureWatcher(): void {
   }
 }
 
-const CYRILLIC_MAP: Record<string, string> = {
-  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'yo', ж: 'zh',
-  з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o',
-  п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'kh', ц: 'ts',
-  ч: 'ch', ш: 'sh', щ: 'shch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
-};
-
-export function slugifyTag(name: string): string {
-  const transliterated = name
-    .toLowerCase()
-    .split('')
-    .map((char) => CYRILLIC_MAP[char] ?? char)
-    .join('');
-
-  return (
-    transliterated
-      .replace(/[^a-z0-9\s-]/g, '')
-      .trim()
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-') || 'general'
-  );
+export function slugifyTag(tag: string): string {
+  return toSlug(tag);
 }
 
-export function slugifyAuthor(name: string): string {
-  const transliterated = name
-    .toLowerCase()
-    .split('')
-    .map((char) => CYRILLIC_MAP[char] ?? char)
-    .join('');
+export function slugifyAuthor(author: string): string {
+  return toSlug(author);
+}
 
-  return (
-    transliterated
-      .replace(/[^a-z0-9\s-]/g, '')
-      .trim()
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-') || 'editorial'
-  );
+// Вспомогательная функция для отображения имени автора по его slug с капитализацией всех слов:
+export function authorNameFromSlug(slug: string): string {
+  return fromSlug(slug, false)
+    .split(/(\s+|-)/)
+    .map((part) => (part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part))
+    .join('');
 }
 
 function stripMarkdown(md: string): string {
@@ -503,4 +481,25 @@ export async function searchPosts(query: string): Promise<SearchResult[]> {
       ...post,
       snippetHtml: buildHighlightedSnippet(post, trimmed),
     }));
+}
+
+
+/**
+ * Склоняет существительное в зависимости от числительного (1 статья, 2 статьи, 5 статей)
+ */
+export function pluralizeRu(
+  count: number,
+  forms: [one: string, few: string, many: string],
+): string {
+  const abs = Math.abs(count);
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  if (mod100 >= 11 && mod100 <= 19) return forms[2];
+  if (mod10 === 1) return forms[0];
+  if (mod10 >= 2 && mod10 <= 4) return forms[1];
+  return forms[2];
+}
+
+export function getPostWord(count: number): string {
+  return pluralizeRu(count, ["статья", "статьи", "статей"]);
 }

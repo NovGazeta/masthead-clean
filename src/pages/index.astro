@@ -1,56 +1,141 @@
 ---
 import { getAllPosts } from "../lib/posts";
 import BaseLayout from "../layouts/BaseLayout.astro";
-import FeaturedArticle from "../components/FeaturedArticle.astro";
 import ArticleCard from "../components/ArticleCard.astro";
 
+// Получаем номер текущей страницы из URL (например, ?page=2)
+const url = Astro.url;
+const pageParam = url.searchParams.get("page");
+const currentPage = Math.max(1, parseInt(pageParam || "1", 10));
+
+const ARTICLES_PER_PAGE = 12; // Количество статей на главной странице
+
 const allPosts = await getAllPosts();
-const featuredPost = allPosts.find((p) => p.featured) || allPosts[0];
-const regularPosts = allPosts.filter((p) => p.slug !== featuredPost?.slug);
+const totalPosts = allPosts.length;
+const totalPages = Math.ceil(totalPosts / ARTICLES_PER_PAGE);
+
+// Вырезаем статьи для текущей страницы
+const startIndex = (currentPage - 1) * ARTICLES_PER_PAGE;
+const paginatedPosts = allPosts.slice(startIndex, startIndex + ARTICLES_PER_PAGE);
+
+const featuredPost = currentPage === 1 && paginatedPosts.length > 0 ? paginatedPosts[0] : null;
+const regularPosts = currentPage === 1 ? paginatedPosts.slice(1) : paginatedPosts;
 ---
 
-<BaseLayout title="Главная">
-  {featuredPost && <FeaturedArticle post={featuredPost} />}
+<BaseLayout title="THE Журнал — Главная страница">
+  <section class="feed-section">
+    {paginatedPosts.length === 0 ? (
+      <div class="empty-state">
+        <p>Пока нет ни одной опубликованной статьи.</p>
+      </div>
+    ) : (
+      <>
+        {/* Главная избранная статья (только на 1-й странице) */}
+        {featuredPost && (
+          <div class="featured-wrapper">
+            <ArticleCard post={featuredPost} featured={true} />
+          </div>
+        )}
 
-  <section class="latest-section">
-    <div class="section-header">
-      <span class="meta-label">Последние публикации</span>
-    </div>
+        {/* Сетка остальных статей */}
+        <div class="articles-grid">
+          {regularPosts.map((post) => (
+            <ArticleCard post={post} />
+          ))}
+        </div>
 
-    <div class="articles-grid">
-      {regularPosts.map((post) => (
-        <ArticleCard post={post} />
-      ))}
-    </div>
+        {/* Блок пагинации */}
+        {totalPages > 1 && (
+          <nav class="pagination" aria-label="Пагинация по страницам">
+            {currentPage > 1 ? (
+              <a href={currentPage === 2 ? "/" : `/?page=${currentPage - 1}`} class="page-link">
+                &larr; Назад
+              </a>
+            ) : (
+              <span class="page-link disabled">&larr; Назад</span>
+            )}
+
+            <span class="page-info meta-label">
+              Страница {currentPage} из {totalPages}
+            </span>
+
+            {currentPage < totalPages ? (
+              <a href={`/?page=${currentPage + 1}`} class="page-link">
+                Вперед &rarr;
+              </a>
+            ) : (
+              <span class="page-link disabled">Вперед &rarr;</span>
+            )}
+          </nav>
+        )}
+      </>
+    )}
   </section>
 </BaseLayout>
 
 <style>
-  .latest-section {
-    margin-top: 3rem;
+  .feed-section {
+    max-width: 1000px;
+    margin: 0 auto;
   }
 
-  .section-header {
-    border-bottom: 1px solid var(--border-dark);
-    padding-bottom: 0.5rem;
-    margin-bottom: 2rem;
+  .featured-wrapper {
+    margin-bottom: 2.5rem;
+    padding-bottom: 2.5rem;
+    border-bottom: 2px solid var(--border-dark);
   }
 
   .articles-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 2.5rem;
   }
 
-  @media (max-width: 900px) {
-    .articles-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
+  /* Пагинация */
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--border-dark);
   }
 
-  @media (max-width: 600px) {
+  .page-link {
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    color: var(--text-primary);
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+    transition: all 0.2s ease;
+  }
+
+  .page-link:hover:not(.disabled) {
+    border-color: var(--border-dark);
+    color: var(--accent-color);
+    opacity: 1;
+  }
+
+  .page-link.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background-color: transparent;
+  }
+
+  .page-info {
+    color: var(--text-secondary);
+  }
+
+  @media (max-width: 768px) {
     .articles-grid {
       grid-template-columns: 1fr;
+      gap: 2rem;
+    }
+
+    .pagination {
+      margin-top: 2.5rem;
     }
   }
 </style>

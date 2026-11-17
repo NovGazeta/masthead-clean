@@ -31,43 +31,50 @@ interface YearGroup {
   months: MonthGroup[];
 }
 
-// Группируем публикации: Год (по убыванию) -> Месяц (по убыванию) -> Статьи (по дате)
-const yearMap = new Map<number, Map<number, Post[]>>();
+// 1. Собираем все доступные года по убыванию
+const allYears = Array.from(new Set(posts.map((p) => p.pubDate.getFullYear()))).sort(
+  (a, b) => b - a,
+);
 
-for (const post of posts) {
-  const year = post.pubDate.getFullYear();
+const defaultYear = allYears[0] || new Date().getFullYear();
+
+// 2. Читаем параметры из URL (?year=YYYY&page=N)
+const url = Astro.url;
+const queryYear = url.searchParams.get("year");
+const selectedYear = queryYear ? parseInt(queryYear, 10) : defaultYear;
+
+const queryPage = url.searchParams.get("page");
+const currentPage = Math.max(1, parseInt(queryPage || "1", 10));
+
+const POSTS_PER_PAGE = 20; // Лимит статей на страницу внутри выбранного года
+
+// 3. Фильтруем статьи строго по выбранному году на сервере
+const yearPosts = posts.filter((p) => p.pubDate.getFullYear() === selectedYear);
+
+const totalPostsInYear = yearPosts.length;
+const totalPages = Math.ceil(totalPostsInYear / POSTS_PER_PAGE);
+
+// Пагинация среза для выбранного года
+const startIndex = (currentPage - 1) * POSTS_PER_PAGE;
+const paginatedPosts = yearPosts.slice(startIndex, startIndex + POSTS_PER_PAGE);
+
+// 4. Группируем отфильтрованные и срезанные статьи по месяцам для отображения
+const monthMap = new Map<number, Post[]>();
+for (const post of paginatedPosts) {
   const month = post.pubDate.getMonth();
-
-  if (!yearMap.has(year)) {
-    yearMap.set(year, new Map());
-  }
-  const monthMap = yearMap.get(year)!;
-
   if (!monthMap.has(month)) {
     monthMap.set(month, []);
   }
   monthMap.get(month)!.push(post);
 }
 
-const archiveTree: YearGroup[] = Array.from(yearMap.entries())
-  .sort(([yearA], [yearB]) => yearB - yearA)
-  .map(([year, monthMap]) => {
-    const months = Array.from(monthMap.entries())
-      .sort(([monthA], [monthB]) => monthB - monthA)
-      .map(([monthIndex, monthPosts]) => ({
-        monthIndex,
-        monthName: MONTH_NAMES[monthIndex],
-        posts: monthPosts,
-      }));
-
-    const totalCount = months.reduce((sum, m) => sum + m.posts.length, 0);
-
-    return {
-      year,
-      totalCount,
-      months,
-    };
-  });
+const months: MonthGroup[] = Array.from(monthMap.entries())
+  .sort(([monthA], [monthB]) => monthB - monthA)
+  .map(([monthIndex, monthPosts]) => ({
+    monthIndex,
+    monthName: MONTH_NAMES[monthIndex],
+    posts: monthPosts,
+  }));
 
 function pluralizeIssues(count: number): string {
   const mod10 = count % 10;
@@ -81,8 +88,8 @@ function pluralizeIssues(count: number): string {
 ---
 
 <BaseLayout
-  title="Архив выпусков"
-  description="Хронологическая подшивка всех публикаций издания The Masthead по годам и месяцам"
+  title={`Архив выпусков — ${selectedYear}`}
+  description={`Хронологическая подшивка публикаций издания The Masthead за ${selectedYear} год`}
 >
   <section class="archive-page">
     <header class="archive-header">
@@ -92,83 +99,107 @@ function pluralizeIssues(count: number): string {
         Полный каталог материалов издания, систематизированный по календарю выхода.
       </p>
 
-      {archiveTree.length > 0 && (
-        <nav class="year-jumps" aria-label="Быстрый переход по годам">
+      {allYears.length > 0 && (
+        <nav class="year-jumps" aria-label="Выбор года выпуска">
           <span class="meta-label">Годы выпуска:</span>
           <div class="year-pills">
-            {archiveTree.map((group) => (
-              <a href={`#year-${group.year}`} class="year-pill meta-label">
-                {group.year}
+            {allYears.map((y) => (
+              <a
+                href={`/archive?year=${y}`}
+                class={`year-pill meta-label ${y === selectedYear ? "is-active" : ""}`}
+              >
+                {y}
               </a>
             ))}
           </div>
           <span class="meta-label total-badge">
-            Всего в подшивке: {pluralizeIssues(posts.length)}
+            Всего за {selectedYear} год: {pluralizeIssues(totalPostsInYear)}
           </span>
         </nav>
       )}
     </header>
 
-    {archiveTree.length === 0 ? (
+    {months.length === 0 ? (
       <div class="empty-archive">
-        <p>В подшивке пока нет опубликованных материалов.</p>
+        <p>За {selectedYear} год нет опубликованных материалов.</p>
       </div>
     ) : (
       <div class="archive-timeline">
-        {archiveTree.map((yearGroup) => (
-          <section
-            id={`year-${yearGroup.year}`}
-            class="year-section"
-            aria-labelledby={`heading-year-${yearGroup.year}`}
-          >
-            <div class="year-banner">
-              <h2 id={`heading-year-${yearGroup.year}`}>{yearGroup.year}</h2>
-              <span class="meta-label">{pluralizeIssues(yearGroup.totalCount)}</span>
-            </div>
+        <section class="year-section">
+          <div class="year-banner">
+            <h2>{selectedYear}</h2>
+            <span class="meta-label">
+              Страница {currentPage} из {totalPages || 1}
+            </span>
+          </div>
 
-            <div class="months-stack">
-              {yearGroup.months.map((monthGroup) => (
-                <div class="month-block">
-                  <div class="month-sidebar">
-                    <h3 class="month-title">{monthGroup.monthName}</h3>
-                    <span class="meta-label month-count">
-                      {pluralizeIssues(monthGroup.posts.length)}
-                    </span>
-                  </div>
-
-                  <ul class="issues-list">
-                    {monthGroup.posts.map((post) => {
-                      const day = String(post.pubDate.getDate()).padStart(2, "0");
-                      const monthNum = String(post.pubDate.getMonth() + 1).padStart(2, "0");
-
-                      return (
-                        <li class="issue-row">
-                          <time class="issue-date meta-label" datetime={post.pubDate.toISOString()}>
-                            {day}.{monthNum}
-                          </time>
-
-                          <div class="issue-body">
-                            <div class="issue-headline-line">
-                              <a href={`/articles/${post.slug}`} class="issue-link">
-                                {post.title}
-                              </a>
-                            </div>
-                            {post.description && <p class="issue-excerpt">{post.description}</p>}
-                          </div>
-
-                          <div class="issue-meta">
-                            <span class="category-tag">{post.category}</span>
-                            <span class="meta-label issue-reading-time">{post.readingTime}</span>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
+          <div class="months-stack">
+            {months.map((monthGroup) => (
+              <div class="month-block">
+                <div class="month-sidebar">
+                  <h3 class="month-title">{monthGroup.monthName}</h3>
+                  <span class="meta-label month-count">
+                    {pluralizeIssues(monthGroup.posts.length)}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </section>
-        ))}
+
+                <ul class="issues-list">
+                  {monthGroup.posts.map((post) => {
+                    const day = String(post.pubDate.getDate()).padStart(2, "0");
+                    const monthNum = String(post.pubDate.getMonth() + 1).padStart(2, "0");
+
+                    return (
+                      <li class="issue-row">
+                        <time class="issue-date meta-label" datetime={post.pubDate.toISOString()}>
+                          {day}.{monthNum}
+                        </time>
+
+                        <div class="issue-body">
+                          <div class="issue-headline-line">
+                            <a href={`/articles/${post.slug}`} class="issue-link">
+                              {post.title}
+                            </a>
+                          </div>
+                          {post.description && <p class="issue-excerpt">{post.description}</p>}
+                        </div>
+
+                        <div class="issue-meta">
+                          <span class="category-tag">{post.rubric}</span>
+                          <span class="meta-label issue-reading-time">{post.readingTime}</span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Серверная пагинация */}
+        {totalPages > 1 && (
+          <nav class="pagination" aria-label="Пагинация архива">
+            {currentPage > 1 ? (
+              <a href={`/archive?year=${selectedYear}&page=${currentPage - 1}`} class="page-link">
+                &larr; Назад
+              </a>
+            ) : (
+              <span class="page-link disabled">&larr; Назад</span>
+            )}
+
+            <span class="page-info meta-label">
+              Страница {currentPage} из {totalPages}
+            </span>
+
+            {currentPage < totalPages ? (
+              <a href={`/archive?year=${selectedYear}&page=${currentPage + 1}`} class="page-link">
+                Вперед &rarr;
+              </a>
+            ) : (
+              <span class="page-link disabled">Вперед &rarr;</span>
+            )}
+          </nav>
+        )}
       </div>
     )}
   </section>
@@ -182,6 +213,7 @@ function pluralizeIssues(count: number): string {
   .archive-page {
     max-width: 980px;
     margin: 0 auto;
+    padding-bottom: 4rem;
   }
 
   .archive-header {
@@ -227,6 +259,7 @@ function pluralizeIssues(count: number): string {
     padding: 0.3rem 0.7rem;
     border: 1px solid var(--border-color);
     color: var(--text-primary);
+    text-decoration: none;
     transition:
       border-color 0.2s ease,
       background-color 0.2s ease,
@@ -235,9 +268,15 @@ function pluralizeIssues(count: number): string {
 
   .year-pill:hover {
     border-color: var(--border-dark);
-    background-color: var(--border-dark);
-    color: var(--bg-color);
     opacity: 1;
+  }
+
+  /* Стили для активной кнопки выбранного года */
+  .year-pill.is-active {
+    background-color: var(--border-dark);
+    color: var(--accent-color); /* Выделяем текст цветом акцента */
+    border-color: var(--border-dark);
+    font-weight: 1000;
   }
 
   .total-badge {
@@ -249,11 +288,7 @@ function pluralizeIssues(count: number): string {
   .archive-timeline {
     display: flex;
     flex-direction: column;
-    gap: 4rem;
-  }
-
-  .year-section {
-    scroll-margin-top: 1.5rem;
+    gap: 3rem;
   }
 
   .year-banner {
@@ -318,7 +353,6 @@ function pluralizeIssues(count: number): string {
     align-items: baseline;
     padding: 1.05rem 0;
     border-bottom: 1px solid var(--border-color);
-    transition: background-color 0.15s ease;
   }
 
   .issue-date {
@@ -331,6 +365,7 @@ function pluralizeIssues(count: number): string {
     font-weight: 500;
     line-height: 1.35;
     color: var(--text-primary);
+    text-decoration: none;
     transition: color 0.2s ease;
   }
 
@@ -362,6 +397,43 @@ function pluralizeIssues(count: number): string {
   .issue-reading-time {
     color: var(--text-secondary);
     font-size: 0.7rem;
+  }
+
+  /* Пагинация */
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--border-dark);
+  }
+
+  .page-link {
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    color: var(--text-primary);
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+    transition: all 0.2s ease;
+  }
+
+  .page-link:hover:not(.disabled) {
+    border-color: var(--border-dark);
+    color: var(--accent-color);
+    opacity: 1;
+  }
+
+  .page-link.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background-color: transparent;
+  }
+
+  .page-info {
+    color: var(--text-secondary);
   }
 
   .empty-archive {

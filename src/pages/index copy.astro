@@ -1,0 +1,56 @@
+---
+import { getAllPosts } from "../lib/posts";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import FeaturedArticle from "../components/FeaturedArticle.astro";
+import ArticleCard from "../components/ArticleCard.astro";
+
+const allPosts = await getAllPosts();
+const featuredPost = allPosts.find((p) => p.featured) || allPosts[0];
+const regularPosts = allPosts.filter((p) => p.slug !== featuredPost?.slug);
+---
+
+<BaseLayout title="Главная">
+  {featuredPost && <FeaturedArticle post={featuredPost} />}
+
+  <section class="latest-section">
+    <div class="section-header">
+      <span class="meta-label">Последние публикации</span>
+    </div>
+
+    <div class="articles-grid">
+      {regularPosts.map((post) => (
+        <ArticleCard post={post} />
+      ))}
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .latest-section {
+    margin-top: 3rem;
+  }
+
+  .section-header {
+    border-bottom: 1px solid var(--border-dark);
+    padding-bottom: 0.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .articles-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2.5rem;
+  }
+
+  @media (max-width: 900px) {
+    .articles-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 600px) {
+    .articles-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
