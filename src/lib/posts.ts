@@ -428,6 +428,15 @@ export async function getPostsByTag(tagSlug: string): Promise<{ tagName: string;
   return { tagName, posts: matchedPosts };
 }
 
+/**
+ * Возвращает список всех уникальных рубрик из опубликованных постов
+ */
+export async function getAllRubrics(): Promise<string[]> {
+  const posts = await getAllPosts();
+  const rubrics = new Set(posts.map((p) => p.rubric).filter(Boolean));
+  return Array.from(rubrics);
+}
+
 export function paginateItems<T>(
   items: T[],
   requestedPage: number,

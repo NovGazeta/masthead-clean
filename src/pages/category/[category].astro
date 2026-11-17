@@ -1,18 +1,14 @@
 ---
 import { getAllPosts, paginateItems } from "../../lib/posts";
+import { toSlug, fromSlug } from "../../lib/translit";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import ArticleCard from "../../components/ArticleCard.astro";
 import Pagination from "../../components/Pagination.astro";
 
-const CATEGORY_MAP: Record<string, string> = {
-  culture: "Культура",
-  technology: "Технологии",
-  essays: "Эссе",
-  design: "Дизайн",
-};
+console.log(Astro.params);
 
 const { category } = Astro.params;
-const categoryName = category ? CATEGORY_MAP[category.toLowerCase()] : undefined;
+const categoryName = category ? fromSlug(category) : undefined;
 
 if (!categoryName) {
   return Astro.redirect("/404");
@@ -20,7 +16,7 @@ if (!categoryName) {
 
 const allPosts = await getAllPosts();
 const categoryPosts = allPosts.filter(
-  (post) => post.category.trim().toLowerCase() === categoryName.toLowerCase(),
+  (post) => post.rubric.trim().toLowerCase() === categoryName.toLowerCase(),
 );
 
 const pageParam = Number(Astro.url.searchParams.get("page") || "1");

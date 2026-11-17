@@ -1,4 +1,9 @@
 ---
+import { getAllRubrics } from "../lib/posts";
+import { toSlug } from "../lib/translit";
+
+const categories = await getAllRubrics();
+
 const today = new Date().toLocaleDateString("ru-RU", {
   weekday: "short",
   year: "numeric",
@@ -21,13 +26,6 @@ const isActive = (slug: string) => {
 const utilityLinks = [
   { name: "О проекте", slug: "/about" },
   { name: "Архив", slug: "/archive" },
-];
-
-const categories = [
-  { name: "Культура", slug: "/category/culture" },
-  { name: "Технологии", slug: "/category/technology" },
-  { name: "Эссе", slug: "/category/essays" },
-  { name: "Дизайн", slug: "/category/design" },
 ];
 ---
 
@@ -158,8 +156,11 @@ const categories = [
       <ul>
         {categories.map((cat) => (
           <li>
-            <a href={cat.slug} class={`meta-label ${isActive(cat.slug) ? "active" : ""}`}>
-              {cat.name}
+            <a
+              href={`/category/${toSlug(cat)}`}
+              class={`meta-label ${isActive(`/category/${cat.slug}`) ? "active" : ""}`}
+            >
+              {cat}
             </a>
           </li>
         ))}
