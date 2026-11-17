@@ -1,9 +1,9 @@
 ---
 import { getAllPosts, paginateItems } from "@/lib/posts";
 import { fromSlug, toSlug } from "@/lib/translit";
-import BaseLayout from "../../layouts/BaseLayout.astro";
-import ArticleCard from "../../components/ArticleCard.astro";
-import Pagination from "../../components/Pagination.astro";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import ArticleCard from "@/components/ArticleCard.astro";
+import Pagination from "@/components/Pagination.astro";
 
 const { slug } = Astro.params;
 const segments = slug ? slug.split("/") : [];

@@ -1,8 +1,8 @@
 ---
-import { getAllTags, getPostsByTag, paginateItems } from "../../lib/posts";
-import BaseLayout from "../../layouts/BaseLayout.astro";
-import ArticleCard from "../../components/ArticleCard.astro";
-import Pagination from "../../components/Pagination.astro";
+import { getAllTags, getPostsByTag, paginateItems } from "@/lib/posts";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import ArticleCard from "@/components/ArticleCard.astro";
+import Pagination from "@/components/Pagination.astro";
 
 export async function getStaticPaths() {
   const tags = await getAllTags();
