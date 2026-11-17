@@ -2,24 +2,24 @@
 import { getAllPosts } from "../lib/posts";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import ArticleCard from "../components/ArticleCard.astro";
+import Pagination from "../components/Pagination.astro";
 
-// Получаем номер текущей страницы из URL (например, ?page=2)
 const url = Astro.url;
 const pageParam = url.searchParams.get("page");
-const currentPage = Math.max(1, parseInt(pageParam || "1", 10));
+const currentPage = Math.max(1, parseInt(pageParam || "1", 10) || 1);
 
-const ARTICLES_PER_PAGE = 12; // Количество статей на главной странице
+const ARTICLES_PER_PAGE = 12;
 
 const allPosts = await getAllPosts();
 const totalPosts = allPosts.length;
-const totalPages = Math.ceil(totalPosts / ARTICLES_PER_PAGE);
+const totalPages = Math.max(1, Math.ceil(totalPosts / ARTICLES_PER_PAGE));
+const safePage = Math.min(currentPage, totalPages);
 
-// Вырезаем статьи для текущей страницы
-const startIndex = (currentPage - 1) * ARTICLES_PER_PAGE;
+const startIndex = (safePage - 1) * ARTICLES_PER_PAGE;
 const paginatedPosts = allPosts.slice(startIndex, startIndex + ARTICLES_PER_PAGE);
 
-const featuredPost = currentPage === 1 && paginatedPosts.length > 0 ? paginatedPosts[0] : null;
-const regularPosts = currentPage === 1 ? paginatedPosts.slice(1) : paginatedPosts;
+const featuredPost = safePage === 1 && paginatedPosts.length > 0 ? paginatedPosts[0] : null;
+const regularPosts = safePage === 1 ? paginatedPosts.slice(1) : paginatedPosts;
 ---
 
 <BaseLayout title="THE Журнал — Главная страница">
@@ -30,44 +30,24 @@ const regularPosts = currentPage === 1 ? paginatedPosts.slice(1) : paginatedPost
       </div>
     ) : (
       <>
-        {/* Главная избранная статья (только на 1-й странице) */}
         {featuredPost && (
           <div class="featured-wrapper">
             <ArticleCard post={featuredPost} featured={true} />
           </div>
         )}
 
-        {/* Сетка остальных статей */}
         <div class="articles-grid">
           {regularPosts.map((post) => (
             <ArticleCard post={post} />
           ))}
         </div>
 
-        {/* Блок пагинации */}
-        {totalPages > 1 && (
-          <nav class="pagination" aria-label="Пагинация по страницам">
-            {currentPage > 1 ? (
-              <a href={currentPage === 2 ? "/" : `/?page=${currentPage - 1}`} class="page-link">
-                &larr; Назад
-              </a>
-            ) : (
-              <span class="page-link disabled">&larr; Назад</span>
-            )}
-
-            <span class="page-info meta-label">
-              Страница {currentPage} из {totalPages}
-            </span>
-
-            {currentPage < totalPages ? (
-              <a href={`/?page=${currentPage + 1}`} class="page-link">
-                Вперед &rarr;
-              </a>
-            ) : (
-              <span class="page-link disabled">Вперед &rarr;</span>
-            )}
-          </nav>
-        )}
+        <Pagination
+          currentPage={safePage}
+          totalPages={totalPages}
+          basePath="/"
+          ariaLabel="Пагинация по страницам"
+        />
       </>
     )}
   </section>
@@ -91,51 +71,17 @@ const regularPosts = currentPage === 1 ? paginatedPosts.slice(1) : paginatedPost
     gap: 2.5rem;
   }
 
-  /* Пагинация */
-  .pagination {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 4rem;
-    padding-top: 1.5rem;
-    border-top: 2px solid var(--border-dark);
-  }
-
-  .page-link {
-    font-family: var(--font-serif);
-    font-size: 1.05rem;
-    color: var(--text-primary);
-    text-decoration: none;
-    padding: 0.5rem 1rem;
-    border: 1px solid var(--border-color);
-    background-color: var(--surface-color);
-    transition: all 0.2s ease;
-  }
-
-  .page-link:hover:not(.disabled) {
-    border-color: var(--border-dark);
-    color: var(--accent-color);
-    opacity: 1;
-  }
-
-  .page-link.disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    background-color: transparent;
-  }
-
-  .page-info {
+  .empty-state {
+    padding: 3rem 0;
+    text-align: center;
     color: var(--text-secondary);
+    font-style: italic;
   }
 
   @media (max-width: 768px) {
     .articles-grid {
       grid-template-columns: 1fr;
       gap: 2rem;
-    }
-
-    .pagination {
-      margin-top: 2.5rem;
     }
   }
 </style>
