@@ -12,13 +12,15 @@ export interface TocItem {
 
 export interface Post {
   slug: string;
+  source?: string;
   title: string;
-  description: string;
+  subtitle?: string;
   pubDate: Date;
-  author: string;
+  authors: string;
   authorSlug: string;
   authorBio?: string;
-  category: string;
+  rubric: string;
+  genre?: string;
   tags: string[];
   draft: boolean;
   featured: boolean;
@@ -36,7 +38,7 @@ export interface AuthorSummary {
   bio: string;
   postCount: number;
   latestPostDate: Date;
-  categories: string[];
+  rubrics: string[];
 }
 
 export interface TagSummary {
@@ -59,6 +61,7 @@ export interface SearchResult extends Post {
   snippetHtml: string;
 }
 
+const ARTICLES_DIR = path.resolve(process.cwd(), 'src/content/articles');
 const POSTS_DIR = path.resolve(process.cwd(), 'src/content/posts');
 
 let cachedPosts: Post[] | null = null;
@@ -72,24 +75,24 @@ export function invalidatePostsCache(): void {
 }
 
 function ensureWatcher(): void {
-  if (isWatcherInitialized || !existsSync(POSTS_DIR)) return;
+  if (isWatcherInitialized || !existsSync(ARTICLES_DIR)) return;
 
   try {
-    const watcher = watch(POSTS_DIR, { persistent: false }, (_eventType, filename) => {
+    const watcher = watch(ARTICLES_DIR, { recursive: true, persistent: false }, (_eventType, filename) => {
       if (!filename || filename.endsWith('.md')) {
         invalidatePostsCache();
       }
     });
 
     watcher.on('error', (err) => {
-      console.error('Ошибка наблюдателя директории постов:', err);
+      console.error('Ошибка наблюдателя директории статей:', err);
       isWatcherInitialized = false;
       invalidatePostsCache();
     });
 
     isWatcherInitialized = true;
   } catch (err) {
-    console.error('Не удалось запустить fs.watch для директории постов:', err);
+    console.error('Не удалось запустить рекурсивный fs.watch:', err);
   }
 }
 
@@ -211,7 +214,7 @@ function escapeRegExp(str: string): string {
 }
 
 function buildHighlightedSnippet(post: Post, query: string): string {
-  const sourceText = [post.description, post.plainText].filter(Boolean).join(' — ');
+  const sourceText = [post.subtitle, post.plainText].filter(Boolean).join(' — ');
   const lowerText = sourceText.toLowerCase();
   const lowerQuery = query.toLowerCase();
   const matchIndex = lowerText.indexOf(lowerQuery);
@@ -236,21 +239,38 @@ function buildHighlightedSnippet(post: Post, query: string): string {
   return safeText.replace(regex, '<mark>$1</mark>');
 }
 
+async function getMarkdownFilesRecursively(dir: string): Promise<string[]> {
+  let results: string[] = [];
+  try {
+    const list = await fs.readdir(dir, { withFileTypes: true });
+    for (const file of list) {
+      const resPath = path.resolve(dir, file.name);
+      if (file.isDirectory()) {
+        const subFiles = await getMarkdownFilesRecursively(resPath);
+        results = results.concat(subFiles);
+      } else if (file.isFile() && file.name.endsWith('.md')) {
+        results.push(resPath);
+      }
+    }
+  } catch (error) {
+    // Папка еще не создана
+  }
+  return results;
+}
+
 async function loadPostsFromDisk(): Promise<Post[]> {
   try {
-    const files = await fs.readdir(POSTS_DIR);
-    const mdFiles = files.filter((file) => file.endsWith('.md'));
+    const mdFiles = await getMarkdownFilesRecursively(ARTICLES_DIR);
 
     const rawPosts = await Promise.all(
-      mdFiles.map(async (filename) => {
-        const slug = filename.replace(/\.md$/, '');
-        const filePath = path.join(POSTS_DIR, filename);
+      mdFiles.map(async (filePath) => {
+        const relativePath = path.relative(ARTICLES_DIR, filePath);
+        const slug = relativePath.replace(/\.md$/, '').replace(/\\/g, '/');
+
         const rawFile = await fs.readFile(filePath, 'utf-8');
         const { data, content } = matter(rawFile);
 
         const isDraft = Boolean(data.draft);
-
-        // В production скрываем черновики
         if (isDraft && import.meta.env.PROD) {
           return null;
         }
@@ -258,24 +278,30 @@ async function loadPostsFromDisk(): Promise<Post[]> {
         const plainText = stripMarkdown(content);
         const parsedHtml = await marked.parse(content);
         const { html, toc } = extractTocAndInjectIds(parsedHtml);
-        const authorName = (data.author ?? 'Редакция').trim();
+
+        const authorsStr = (data.authors ?? data.author ?? 'Редакция').trim();
+        const rubricStr = (data.rubric ?? data.category ?? 'Общее').trim();
+        const dateValue = data.date ?? data.pubDate;
+        const pubDate = dateValue ? new Date(dateValue) : new Date();
 
         let rawTags: string[] = [];
         if (Array.isArray(data.tags)) {
           rawTags = data.tags.map((t) => String(t).trim()).filter(Boolean);
-        } else if (typeof data.tags === 'string') {
+        } else if (typeof data.tags === 'string' && data.tags.trim()) {
           rawTags = data.tags.split(',').map((t) => t.trim()).filter(Boolean);
         }
 
         return {
           slug,
+          source: data.source ? String(data.source) : undefined,
           title: data.title ?? 'Без названия',
-          description: data.description ?? '',
-          pubDate: data.pubDate ? new Date(data.pubDate) : new Date(),
-          author: authorName,
-          authorSlug: data.authorSlug ? String(data.authorSlug).trim() : slugifyAuthor(authorName),
+          subtitle: data.subtitle ? String(data.subtitle) : undefined,
+          pubDate,
+          authors: authorsStr,
+          authorSlug: slugifyAuthor(authorsStr),
           authorBio: data.authorBio ? String(data.authorBio).trim() : undefined,
-          category: data.category ?? 'Общее',
+          rubric: rubricStr,
+          genre: data.genre ? String(data.genre) : undefined,
           tags: rawTags,
           draft: isDraft,
           featured: Boolean(data.featured),
@@ -297,7 +323,7 @@ async function loadPostsFromDisk(): Promise<Post[]> {
 
     return sorted;
   } catch (error) {
-    console.error('Ошибка чтения директории постов:', error);
+    console.error('Ошибка чтения коллекции articles:', error);
     return [];
   }
 }
@@ -319,7 +345,7 @@ export async function getAllPosts(): Promise<Post[]> {
 }
 
 export async function getPostBySlug(slug: string): Promise<Post | null> {
-  const safeSlug = path.basename(slug);
+  const safeSlug = slug.replace(/^\/+/, '').replace(/\/+$/, '');
   ensureWatcher();
 
   if (cachedPostsMap) {
@@ -340,7 +366,7 @@ export async function getAllAuthors(): Promise<AuthorSummary[]> {
       bio: string;
       postCount: number;
       latestPostDate: Date;
-      categories: Set<string>;
+      rubrics: Set<string>;
     }
   >();
 
@@ -348,12 +374,12 @@ export async function getAllAuthors(): Promise<AuthorSummary[]> {
     const existing = map.get(post.authorSlug);
     if (!existing) {
       map.set(post.authorSlug, {
-        name: post.author,
+        name: post.authors,
         slug: post.authorSlug,
         bio: post.authorBio ?? 'Постоянный автор и обозреватель издания The Masthead.',
         postCount: 1,
         latestPostDate: post.pubDate,
-        categories: new Set([post.category]),
+        rubrics: new Set([post.rubric]),
       });
     } else {
       existing.postCount += 1;
@@ -363,14 +389,14 @@ export async function getAllAuthors(): Promise<AuthorSummary[]> {
       if (post.pubDate > existing.latestPostDate) {
         existing.latestPostDate = post.pubDate;
       }
-      existing.categories.add(post.category);
+      existing.rubrics.add(post.rubric);
     }
   }
 
   return Array.from(map.values())
     .map((entry) => ({
       ...entry,
-      categories: Array.from(entry.categories),
+      rubrics: Array.from(entry.rubrics),
     }))
     .sort((a, b) => b.postCount - a.postCount || a.name.localeCompare(b.name, 'ru'));
 }
@@ -460,12 +486,14 @@ export async function searchPosts(query: string): Promise<SearchResult[]> {
     .filter((post) => {
       const searchable = [
         post.title,
-        post.description,
-        post.author,
-        post.category,
+        post.subtitle,
+        post.authors,
+        post.rubric,
+        post.genre,
         ...post.tags,
         post.plainText,
       ]
+        .filter(Boolean)
         .join(' ')
         .toLowerCase();
 

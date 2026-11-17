@@ -35,7 +35,7 @@ const formattedDate = pubDate.toLocaleDateString("ru-RU", {
 });
 
 const baseUrl = (Astro.site?.toString() || Astro.url.origin).replace(/\/$/, "");
-const postUrl = new URL(`/posts/${encodeURIComponent(post.slug)}`, baseUrl).toString();
+const postUrl = new URL(`/articles/${encodeURIComponent(post.slug)}`, baseUrl).toString();
 const isoDate = pubDate.toISOString();
 
 const telegramShareUrl = `https://t.me/share/url?url=${encodeURIComponent(postUrl)}&text=${encodeURIComponent(title)}`;

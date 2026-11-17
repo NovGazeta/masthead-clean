@@ -71,7 +71,7 @@ export const GET: APIRoute = async ({ site, url }) => {
 
   // Динамические страницы статей
   const postUrls = posts.map((post) => ({
-    loc: `${baseUrl}/posts/${encodeURIComponent(post.slug)}`,
+    loc: `${baseUrl}/articles/${encodeURIComponent(post.slug)}`,
     lastmod: post.pubDate.toISOString(),
     changefreq: 'monthly',
     priority: '0.9',

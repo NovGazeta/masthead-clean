@@ -20,7 +20,7 @@ export const GET: APIRoute = async ({ site, url }) => {
 
   const itemsXml = posts
     .map((post) => {
-      const postUrl = `${baseUrl}/posts/${encodeURIComponent(post.slug)}`;
+      const postUrl = `${baseUrl}/articles/${encodeURIComponent(post.slug)}`;
       const pubDate = post.pubDate.toUTCString();
 
       return `
