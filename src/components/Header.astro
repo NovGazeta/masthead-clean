@@ -1,72 +1,99 @@
 ---
-const currentPath = Astro.url.pathname;
+const today = new Date().toLocaleDateString("ru-RU", {
+  weekday: "short",
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
 
-const navItems = [
-  { label: "Главная", href: "/" },
-  { label: "Культура", href: "/category/culture" },
-  { label: "Технологии", href: "/category/technology" },
-  { label: "Эссе", href: "/category/essays" },
-  { label: "Дизайн", href: "/category/design" },
-  { label: "Архив", href: "/archive" },
-  { label: "О проекте", href: "/about" },
+const pathname = Astro.url.pathname;
+const currentQuery = Astro.url.searchParams.get("q") ?? "";
+
+const normalizePath = (path: string) =>
+  path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path;
+const currentPath = normalizePath(pathname);
+
+const isActive = (slug: string) => {
+  const normalizedSlug = normalizePath(slug);
+  return currentPath === normalizedSlug;
+};
+
+const utilityLinks = [
+  { name: "О проекте", slug: "/about" },
+  { name: "Архив", slug: "/archive" },
 ];
 
-const today = new Date().toLocaleDateString("ru-RU", {
-  weekday: "long",
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-});
+const categories = [
+  { name: "Культура", slug: "/category/culture" },
+  { name: "Технологии", slug: "/category/technology" },
+  { name: "Эссе", slug: "/category/essays" },
+  { name: "Дизайн", slug: "/category/design" },
+];
 ---
 
-<header class="site-header">
+<header class="masthead">
   <div class="container">
-    <!-- Верхняя полоса: дата выпуска, поиск и переключатель темы -->
+    <!-- Верхняя служебная панель -->
     <div class="top-bar">
-      <span class="meta-label issue-date">{today}</span>
+      <div class="top-left">
+        <span class="meta-label">{today}</span>
+        <span class="meta-label issue-num">&bull; Выпуск № 42</span>
+      </div>
 
-      <div class="top-controls">
-        <a
-          href="/search"
-          class:list={["control-btn meta-label", { active: currentPath === "/search" }]}
-          aria-label="Поиск по сайту"
-          title="Поиск"
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <span class="control-text">Поиск</span>
-        </a>
+      <div class="top-actions">
+        <!-- Служебные ссылки (десктоп) -->
+        <nav class="utility-nav" aria-label="Служебная навигация">
+          {utilityLinks.map((link) => (
+            <a href={link.slug} class={`meta-label ${isActive(link.slug) ? "active" : ""}`}>
+              {link.name}
+            </a>
+          ))}
+        </nav>
 
+        <!-- Компактная форма поиска (десктоп) -->
+        <form action="/search" method="get" class="header-search-form" role="search">
+          <input
+            type="search"
+            name="q"
+            value={currentQuery}
+            placeholder="Поиск..."
+            aria-label="Поиск по сайту"
+          />
+          <button type="submit" aria-label="Искать" title="Найти">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </button>
+        </form>
+
+        <!-- Переключатель темной темы -->
         <button
           id="theme-toggle"
+          class="icon-btn"
           type="button"
-          class="control-btn meta-label"
-          aria-label="Переключить цветовую тему"
-          title="Сменить тему"
+          aria-label="Переключить тему"
+          title="Сменить тему оформления"
         >
           <svg
             class="icon-sun"
-            width="14"
-            height="14"
+            width="18"
+            height="18"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            stroke-width="2"
+            stroke-width="1.8"
             stroke-linecap="round"
             stroke-linejoin="round"
-            aria-hidden="true"
           >
             <circle cx="12" cy="12" r="5"></circle>
             <line x1="12" y1="1" x2="12" y2="3"></line>
@@ -80,296 +107,380 @@ const today = new Date().toLocaleDateString("ru-RU", {
           </svg>
           <svg
             class="icon-moon"
-            width="14"
-            height="14"
+            width="18"
+            height="18"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            stroke-width="2"
+            stroke-width="1.8"
             stroke-linecap="round"
             stroke-linejoin="round"
-            aria-hidden="true"
           >
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
           </svg>
-          <span class="control-text" id="theme-label">
-            Тема
-          </span>
         </button>
 
+        <!-- Кнопка мобильного меню (бургер) -->
         <button
           id="mobile-menu-toggle"
+          class="mobile-menu-btn icon-btn"
           type="button"
-          class="control-btn mobile-only meta-label"
           aria-expanded="false"
           aria-controls="main-nav"
-          aria-label="Открыть меню"
+          aria-label="Меню навигации"
         >
           <svg
-            class="icon-menu"
-            width="15"
-            height="15"
+            width="18"
+            height="18"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
+            stroke-width="1.8"
           >
-            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="7" x2="21" y2="7"></line>
             <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="17" x2="21" y2="17"></line>
           </svg>
-          <svg
-            class="icon-close"
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-          <span>Меню</span>
         </button>
       </div>
     </div>
 
-    <!-- Газетная шапка (Masthead) -->
-    <div class="masthead">
-      <a href="/" class="brand">
+    <!-- Логотип издания -->
+    <div class="brand-area">
+      <a href="/" class="logo">
         THE MASTHEAD
       </a>
       <p class="tagline">Журнал о цифровом ремесле, культуре и медленном чтении</p>
     </div>
 
-    <!-- Навигация по рубрикам и разделам -->
-    <nav id="main-nav" class="main-nav" aria-label="Основная навигация">
-      <ul class="nav-list">
-        {navItems.map((item) => {
-          const isActive =
-            item.href === "/" ? currentPath === "/" : currentPath.startsWith(item.href);
+    <!-- Десктопная навигация под логотипом -->
+    <nav class="desktop-nav" aria-label="Рубрики">
+      <ul>
+        {categories.map((cat) => (
+          <li>
+            <a href={cat.slug} class={`meta-label ${isActive(cat.slug) ? "active" : ""}`}>
+              {cat.name}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
 
-          return (
-            <li>
-              <a
-                href={item.href}
-                class:list={["nav-link meta-label", { active: isActive }]}
-                aria-current={isActive ? "page" : undefined}
-              >
-                {item.label}
-              </a>
-            </li>
-          );
-        })}
+    <!-- Мобильное выпадающее меню -->
+    <nav id="main-nav" class="mobile-nav" aria-label="Мобильное меню">
+      <!-- Форма поиска внутри мобильного меню -->
+      <form action="/search" method="get" class="mobile-search-form" role="search">
+        <input
+          type="search"
+          name="q"
+          value={currentQuery}
+          placeholder="Поиск по статьям..."
+          aria-label="Поиск по сайту"
+        />
+        <button type="submit" aria-label="Искать">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+      </form>
+
+      <ul>
+        {utilityLinks.map((link) => (
+          <li class="mobile-utility-item">
+            <a href={link.slug} class={`meta-label ${isActive(link.slug) ? "active" : ""}`}>
+              {link.name}
+            </a>
+          </li>
+        ))}
+        {categories.map((cat) => (
+          <li>
+            <a href={cat.slug} class={`meta-label ${isActive(cat.slug) ? "active" : ""}`}>
+              {cat.name}
+            </a>
+          </li>
+        ))}
       </ul>
     </nav>
   </div>
 </header>
 
 <script>
-  // Переключение светлой и тёмной темы
   const themeToggle = document.getElementById("theme-toggle");
-  const themeLabel = document.getElementById("theme-label");
-
-  function syncThemeLabel() {
-    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-    if (themeLabel) {
-      themeLabel.textContent = isDark ? "Светлая" : "Тёмная";
-    }
-  }
-
-  syncThemeLabel();
-
   themeToggle?.addEventListener("click", () => {
     const current = document.documentElement.getAttribute("data-theme");
     const next = current === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
     localStorage.setItem("theme", next);
-    syncThemeLabel();
   });
 
-  // Мобильное меню
   const menuToggle = document.getElementById("mobile-menu-toggle");
-  const mainNav = document.getElementById("main-nav");
+  const mobileNav = document.getElementById("main-nav");
 
   menuToggle?.addEventListener("click", () => {
-    const isOpen = mainNav?.classList.toggle("is-open");
+    const isOpen = mobileNav?.classList.toggle("is-open");
     menuToggle.setAttribute("aria-expanded", String(Boolean(isOpen)));
-    menuToggle.classList.toggle("is-active", Boolean(isOpen));
   });
 </script>
 
 <style>
-  .site-header {
-    margin-bottom: 3rem;
+  .masthead {
+    padding-top: 1rem;
+    margin-bottom: 2.5rem;
   }
 
   .top-bar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.75rem 0;
+    padding-bottom: 0.75rem;
     border-bottom: 1px solid var(--border-color);
     gap: 1rem;
   }
 
-  .top-controls {
+  .top-left {
     display: flex;
     align-items: center;
-    gap: 0.65rem;
+    gap: 1rem;
   }
 
-  .control-btn {
-    display: inline-flex;
+  .top-actions {
+    display: flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.35rem 0.65rem;
-    border: 1px solid var(--border-color);
-    background: transparent;
-    color: var(--text-primary);
-    cursor: pointer;
-    transition:
-      border-color 0.2s ease,
-      background-color 0.2s ease,
-      color 0.2s ease;
+    gap: 1rem;
   }
 
-  .control-btn:hover,
-  .control-btn.active {
-    border-color: var(--border-dark);
-    background-color: var(--surface-color);
+  .utility-nav {
+    display: flex;
+    gap: 1.15rem;
+  }
+
+  .utility-nav a,
+  .desktop-nav a,
+  .mobile-nav a {
+    color: var(--text-secondary);
+    transition: color 0.2s ease;
+  }
+
+  .desktop-nav a {
+    color: var(--text-primary);
+  }
+
+  .utility-nav a:hover,
+  .utility-nav a.active,
+  .desktop-nav a:hover,
+  .desktop-nav a.active,
+  .mobile-nav a:hover,
+  .mobile-nav a.active {
+    color: var(--accent-color);
     opacity: 1;
   }
 
-  /* Иконки темы */
+  /* Десктопная форма поиска в шапке */
+  .header-search-form {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    height: 34px;
+    padding: 0 0.5rem;
+    transition: border-color 0.2s ease;
+  }
+
+  .header-search-form:focus-within {
+    border-color: var(--border-dark);
+  }
+
+  .header-search-form input {
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    width: 145px;
+    outline: none;
+  }
+
+  .header-search-form input::placeholder {
+    color: var(--text-secondary);
+  }
+
+  .header-search-form button {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding-left: 0.25rem;
+  }
+
+  .header-search-form button:hover {
+    color: var(--accent-color);
+  }
+
+  .icon-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition:
+      border-color 0.2s ease,
+      background-color 0.2s ease;
+  }
+
+  .icon-btn:hover {
+    border-color: var(--border-dark);
+    background-color: var(--surface-color);
+  }
+
+  :global([data-theme="light"]) .icon-sun,
+  :global(:root:not([data-theme="dark"])) .icon-sun {
+    display: none;
+  }
+
   :global([data-theme="dark"]) .icon-moon {
     display: none;
   }
 
-  :global(:not([data-theme="dark"])) .icon-sun {
+  .mobile-menu-btn {
     display: none;
   }
 
-  .mobile-only {
-    display: none;
-  }
-
-  .icon-close {
-    display: none;
-  }
-
-  .mobile-only.is-active .icon-menu {
-    display: none;
-  }
-
-  .mobile-only.is-active .icon-close {
-    display: inline-block;
-  }
-
-  /* Логотип издания */
-  .masthead {
+  .brand-area {
     text-align: center;
-    padding: 2.25rem 0 1.75rem;
+    padding: 2.25rem 0;
+    border-bottom: 2px solid var(--border-dark);
   }
 
-  .brand {
+  .logo {
     font-family: var(--font-serif);
-    font-size: clamp(2.4rem, 6vw, 4.4rem);
+    font-size: clamp(2.1rem, 6.5vw, 4.5rem);
     font-weight: 500;
-    letter-spacing: 0.04em;
+    letter-spacing: -0.03em;
     line-height: 1;
-    display: inline-block;
-  }
-
-  .brand:hover {
-    opacity: 1;
+    display: block;
   }
 
   .tagline {
-    margin-top: 0.65rem;
-    font-size: 1rem;
     font-style: italic;
     color: var(--text-secondary);
+    margin-top: 0.65rem;
+    font-size: clamp(0.92rem, 2.5vw, 1.05rem);
   }
 
-  /* Навигационная полоса */
-  .main-nav {
-    border-top: 2px solid var(--border-dark);
-    border-bottom: 1px solid var(--border-dark);
-    padding: 0.8rem 0;
+  .desktop-nav {
+    border-bottom: 2px solid var(--border-dark);
+    padding: 0.75rem 0;
   }
 
-  .nav-list {
+  .desktop-nav ul {
     list-style: none;
     display: flex;
     justify-content: center;
-    align-items: center;
-    gap: 2rem;
     flex-wrap: wrap;
-    margin: 0;
-    padding: 0;
+    gap: 2rem;
   }
 
-  .nav-link {
-    color: var(--text-primary);
-    padding-bottom: 0.2rem;
-    border-bottom: 2px solid transparent;
-    transition:
-      color 0.2s ease,
-      border-color 0.2s ease;
+  .mobile-nav {
+    display: none;
   }
 
-  .nav-link:hover {
-    color: var(--accent-color);
-    opacity: 1;
-  }
-
-  .nav-link.active {
-    color: var(--accent-color);
-    border-bottom-color: var(--accent-color);
+  /* Адаптив для планшетов и смартфонов */
+  @media (max-width: 860px) {
+    .issue-num {
+      display: none;
+    }
   }
 
   @media (max-width: 768px) {
-    .site-header {
-      margin-bottom: 2rem;
-    }
-
-    .issue-date {
-      display: none;
-    }
-
-    .top-bar {
-      justify-content: flex-end;
-    }
-
-    .mobile-only {
-      display: inline-flex;
-    }
-
     .masthead {
-      padding: 1.5rem 0 1.25rem;
+      margin-bottom: 1.75rem;
     }
 
-    .main-nav {
+    .utility-nav,
+    .header-search-form,
+    .desktop-nav {
+      display: none !important;
+    }
+
+    .mobile-menu-btn {
+      display: inline-flex !important;
+    }
+
+    .brand-area {
+      padding: 1.5rem 0;
+    }
+
+    .mobile-nav {
       display: none;
-      padding: 1rem 0;
+      border-bottom: 2px solid var(--border-dark);
+      padding: 0;
     }
 
-    .main-nav.is-open {
+    .mobile-nav.is-open {
       display: block;
     }
 
-    .nav-list {
+    .mobile-search-form {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.65rem 0.25rem;
+    }
+
+    .mobile-search-form input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .mobile-search-form button {
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      padding: 0 0.5rem;
+      cursor: pointer;
+    }
+
+    .mobile-nav ul {
+      list-style: none;
+      display: flex;
       flex-direction: column;
-      align-items: flex-start;
-      gap: 0.85rem;
+      gap: 0;
+    }
+
+    .mobile-nav li {
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .mobile-nav li:last-child {
+      border-bottom: none;
+    }
+
+    .mobile-utility-item {
+      background-color: var(--surface-color);
+    }
+
+    .mobile-nav a {
+      display: block;
+      padding: 0.85rem 0.25rem;
+      color: var(--text-primary);
     }
   }
 </style>
