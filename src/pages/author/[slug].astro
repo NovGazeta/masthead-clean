@@ -1,0 +1,188 @@
+---
+import { getAuthorBySlug, paginateItems } from "../../lib/posts";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ArticleCard from "../../components/ArticleCard.astro";
+import Pagination from "../../components/Pagination.astro";
+
+const { slug } = Astro.params;
+
+if (!slug) {
+  return Astro.redirect("/404");
+}
+
+const result = await getAuthorBySlug(slug);
+
+if (!result) {
+  return Astro.redirect("/404");
+}
+
+const { author, posts } = result;
+
+const pageParam = Number(Astro.url.searchParams.get("page") || "1");
+const paginated = paginateItems(posts, pageParam, 9);
+
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("");
+}
+
+function pluralizeArticles(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${count} публикация`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+    return `${count} публикации`;
+  }
+  return `${count} публикаций`;
+}
+---
+
+<BaseLayout title={`${author.name} — Автор`} description={author.bio}>
+  <section class="author-profile-page">
+    <header class="author-dossier">
+      <div class="dossier-top">
+        <a href="/authors" class="meta-label back-link">
+          &larr; Все авторы
+        </a>
+        <span class="meta-label">{pluralizeArticles(author.postCount)}</span>
+      </div>
+
+      <div class="dossier-main">
+        <div class="dossier-monogram" aria-hidden="true">
+          {getInitials(author.name)}
+        </div>
+        <div class="dossier-info">
+          <span class="meta-label">Автор издания</span>
+          <h1>{author.name}</h1>
+          <p class="dossier-bio">{author.bio}</p>
+          <div class="dossier-categories">
+            <span class="meta-label">Рубрики:</span>
+            {author.categories.map((cat) => (
+              <span class="category-tag">{cat}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="section-bar">
+      <span class="meta-label">
+        Публикации автора{" "}
+        {paginated.totalPages > 1
+          ? `(страница ${paginated.currentPage} из ${paginated.totalPages})`
+          : ""}
+      </span>
+    </div>
+
+    <div class="articles-grid">
+      {paginated.items.map((post) => (
+        <ArticleCard post={post} />
+      ))}
+    </div>
+
+    <Pagination
+      currentPage={paginated.currentPage}
+      totalPages={paginated.totalPages}
+      baseUrl={Astro.url.pathname + Astro.url.search}
+    />
+  </section>
+</BaseLayout>
+
+<style>
+  .author-dossier {
+    padding-bottom: 2.25rem;
+    border-bottom: 2px solid var(--border-dark);
+    margin-bottom: 2.5rem;
+  }
+
+  .dossier-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.75rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .back-link:hover {
+    color: var(--accent-color);
+    opacity: 1;
+  }
+
+  .dossier-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.75rem;
+  }
+
+  .dossier-monogram {
+    width: 76px;
+    height: 76px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-dark);
+    background-color: var(--surface-color);
+    font-family: var(--font-serif);
+    font-size: 1.75rem;
+    font-weight: 500;
+  }
+
+  .dossier-info h1 {
+    font-size: clamp(2rem, 4.5vw, 3.1rem);
+    font-weight: 500;
+    line-height: 1.12;
+    margin: 0.35rem 0 0.75rem;
+    letter-spacing: -0.02em;
+  }
+
+  .dossier-bio {
+    font-size: 1.12rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    font-style: italic;
+    max-width: 680px;
+    margin-bottom: 1rem;
+  }
+
+  .dossier-categories {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .section-bar {
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.6rem;
+    margin-bottom: 2rem;
+  }
+
+  .articles-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2.5rem;
+  }
+
+  @media (max-width: 900px) {
+    .articles-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 600px) {
+    .dossier-main {
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .articles-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

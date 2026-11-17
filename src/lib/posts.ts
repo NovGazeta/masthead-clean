@@ -16,6 +16,8 @@ export interface Post {
   description: string;
   pubDate: Date;
   author: string;
+  authorSlug: string;
+  authorBio?: string;
   category: string;
   featured: boolean;
   image?: string;
@@ -24,6 +26,25 @@ export interface Post {
   toc: TocItem[];
   htmlContent: string;
   plainText: string;
+}
+
+export interface AuthorSummary {
+  name: string;
+  slug: string;
+  bio: string;
+  postCount: number;
+  latestPostDate: Date;
+  categories: string[];
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  perPage: number;
+  hasPrev: boolean;
+  hasNext: boolean;
 }
 
 export interface SearchResult extends Post {
@@ -64,6 +85,29 @@ function ensureWatcher(): void {
   }
 }
 
+const CYRILLIC_MAP: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'yo', ж: 'zh',
+  з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o',
+  п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'kh', ц: 'ts',
+  ч: 'ch', ш: 'sh', щ: 'shch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+};
+
+export function slugifyAuthor(name: string): string {
+  const transliterated = name
+    .toLowerCase()
+    .split('')
+    .map((char) => CYRILLIC_MAP[char] ?? char)
+    .join('');
+
+  return (
+    transliterated
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-') || 'editorial'
+  );
+}
+
 function stripMarkdown(md: string): string {
   return md
     .replace(/[#>*_`~\[\]()!-]/g, ' ')
@@ -83,7 +127,6 @@ function calculateReadingTime(plainText: string, customReadingTime?: string): st
   return `${minutes} мин чтения`;
 }
 
-// Генерация чистого URL-якоря с поддержкой кириллицы
 function slugifyHeading(text: string): string {
   return text
     .toLowerCase()
@@ -94,7 +137,6 @@ function slugifyHeading(text: string): string {
     .replace(/-+/g, '-');
 }
 
-// Извлечение заголовков H2/H3 и добавление им атрибутов id в HTML
 function extractTocAndInjectIds(rawHtml: string): { html: string; toc: TocItem[] } {
   const toc: TocItem[] = [];
   const usedIds = new Map<string, number>();
@@ -109,22 +151,16 @@ function extractTocAndInjectIds(rawHtml: string): { html: string; toc: TocItem[]
         return `<h${level}${attrs}>${innerHtml}</h${level}>`;
       }
 
-      // Проверяем, не задан ли уже id вручную
       const existingIdMatch = attrs.match(/\bid=["']([^"']+)["']/i);
       let id = existingIdMatch ? existingIdMatch[1] : slugifyHeading(cleanText) || 'section';
 
-      // Гарантируем уникальность id на странице
       const count = usedIds.get(id) ?? 0;
       usedIds.set(id, count + 1);
       if (count > 0) {
         id = `${id}-${count + 1}`;
       }
 
-      toc.push({
-        id,
-        text: cleanText,
-        level,
-      });
+      toc.push({ id, text: cleanText, level });
 
       if (existingIdMatch) {
         return `<h${level}${attrs}>${innerHtml}</h${level}>`;
@@ -190,13 +226,16 @@ async function loadPostsFromDisk(): Promise<Post[]> {
         const plainText = stripMarkdown(content);
         const parsedHtml = await marked.parse(content);
         const { html, toc } = extractTocAndInjectIds(parsedHtml);
+        const authorName = (data.author ?? 'Редакция').trim();
 
         return {
           slug,
           title: data.title ?? 'Без названия',
           description: data.description ?? '',
           pubDate: data.pubDate ? new Date(data.pubDate) : new Date(),
-          author: data.author ?? 'Редакция',
+          author: authorName,
+          authorSlug: data.authorSlug ? String(data.authorSlug).trim() : slugifyAuthor(authorName),
+          authorBio: data.authorBio ? String(data.authorBio).trim() : undefined,
           category: data.category ?? 'Общее',
           featured: Boolean(data.featured),
           image: data.image,
@@ -247,6 +286,91 @@ export async function getPostBySlug(slug: string): Promise<Post | null> {
 
   await getAllPosts();
   return cachedPostsMap?.get(safeSlug) ?? null;
+}
+
+// Сбор агрегированного списка всех авторов издания
+export async function getAllAuthors(): Promise<AuthorSummary[]> {
+  const posts = await getAllPosts();
+  const map = new Map<
+    string,
+    {
+      name: string;
+      slug: string;
+      bio: string;
+      postCount: number;
+      latestPostDate: Date;
+      categories: Set<string>;
+    }
+  >();
+
+  for (const post of posts) {
+    const existing = map.get(post.authorSlug);
+    if (!existing) {
+      map.set(post.authorSlug, {
+        name: post.author,
+        slug: post.authorSlug,
+        bio: post.authorBio ?? 'Постоянный автор и обозреватель издания The Masthead.',
+        postCount: 1,
+        latestPostDate: post.pubDate,
+        categories: new Set([post.category]),
+      });
+    } else {
+      existing.postCount += 1;
+      if (post.authorBio) {
+        existing.bio = post.authorBio;
+      }
+      if (post.pubDate > existing.latestPostDate) {
+        existing.latestPostDate = post.pubDate;
+      }
+      existing.categories.add(post.category);
+    }
+  }
+
+  return Array.from(map.values())
+    .map((entry) => ({
+      ...entry,
+      categories: Array.from(entry.categories),
+    }))
+    .sort((a, b) => b.postCount - a.postCount || a.name.localeCompare(b.name, 'ru'));
+}
+
+export async function getAuthorBySlug(
+  authorSlug: string
+): Promise<{ author: AuthorSummary; posts: Post[] } | null> {
+  const safeSlug = path.basename(authorSlug);
+  const [authors, allPosts] = await Promise.all([getAllAuthors(), getAllPosts()]);
+  const author = authors.find((a) => a.slug === safeSlug);
+
+  if (!author) return null;
+
+  const posts = allPosts.filter((p) => p.authorSlug === safeSlug);
+  return { author, posts };
+}
+
+// Универсальная серверная пагинация списков
+export function paginateItems<T>(
+  items: T[],
+  requestedPage: number,
+  perPage = 9
+): PaginatedResult<T> {
+  const totalItems = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+  const currentPage = Number.isFinite(requestedPage)
+    ? Math.min(totalPages, Math.max(1, Math.floor(requestedPage)))
+    : 1;
+
+  const start = (currentPage - 1) * perPage;
+  const sliced = items.slice(start, start + perPage);
+
+  return {
+    items: sliced,
+    currentPage,
+    totalPages,
+    totalItems,
+    perPage,
+    hasPrev: currentPage > 1,
+    hasNext: currentPage < totalPages,
+  };
 }
 
 export async function searchPosts(query: string): Promise<SearchResult[]> {

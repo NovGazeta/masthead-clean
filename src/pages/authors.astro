@@ -1,0 +1,198 @@
+---
+import { getAllAuthors } from "../lib/posts";
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const authors = await getAllAuthors();
+
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("");
+}
+
+function pluralizeArticles(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${count} статья`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+    return `${count} статьи`;
+  }
+  return `${count} статей`;
+}
+---
+
+<BaseLayout title="Авторы" description="Редакция и постоянные авторы журнала The Masthead">
+  <section class="authors-page">
+    <header class="page-header">
+      <span class="meta-label">Редакция и колумнисты</span>
+      <h1>Авторы издания</h1>
+      <p class="page-lead">
+        Журналисты, исследователи и эссеисты, формирующие повестку The Masthead.
+      </p>
+    </header>
+
+    {authors.length === 0 ? (
+      <p class="empty-state">Список авторов пока пуст.</p>
+    ) : (
+      <div class="authors-grid">
+        {authors.map((author) => (
+          <article class="author-card">
+            <div class="author-card-top">
+              <div class="author-monogram" aria-hidden="true">
+                {getInitials(author.name)}
+              </div>
+              <div class="author-heading">
+                <h2>
+                  <a href={`/author/${author.slug}`}>{author.name}</a>
+                </h2>
+                <span class="meta-label">{pluralizeArticles(author.postCount)}</span>
+              </div>
+            </div>
+
+            <p class="author-bio">{author.bio}</p>
+
+            <div class="author-footer">
+              <div class="author-topics">
+                {author.categories.map((cat) => (
+                  <span class="category-tag">{cat}</span>
+                ))}
+              </div>
+              <a href={`/author/${author.slug}`} class="meta-label read-author-link">
+                Все материалы &rarr;
+              </a>
+            </div>
+          </article>
+        ))}
+      </div>
+    )}
+  </section>
+</BaseLayout>
+
+<style>
+  .authors-page {
+    max-width: 1040px;
+    margin: 0 auto;
+  }
+
+  .page-header {
+    padding-bottom: 1.75rem;
+    border-bottom: 2px solid var(--border-dark);
+    margin-bottom: 3rem;
+  }
+
+  .page-header h1 {
+    font-size: clamp(2.1rem, 5vw, 3.5rem);
+    font-weight: 500;
+    line-height: 1.1;
+    margin: 0.5rem 0 0.75rem;
+    letter-spacing: -0.02em;
+  }
+
+  .page-lead {
+    font-size: 1.15rem;
+    font-style: italic;
+    color: var(--text-secondary);
+    max-width: 640px;
+  }
+
+  .authors-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2.25rem;
+  }
+
+  .author-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 1.75rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+    transition: border-color 0.2s ease;
+  }
+
+  .author-card:hover {
+    border-color: var(--border-dark);
+  }
+
+  .author-card-top {
+    display: flex;
+    align-items: center;
+    gap: 1.15rem;
+    margin-bottom: 1.15rem;
+  }
+
+  .author-monogram {
+    width: 54px;
+    height: 54px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-dark);
+    font-family: var(--font-serif);
+    font-size: 1.25rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    background-color: var(--bg-color);
+  }
+
+  .author-heading h2 {
+    font-size: 1.5rem;
+    font-weight: 500;
+    line-height: 1.2;
+    margin-bottom: 0.25rem;
+  }
+
+  .author-heading h2 a:hover {
+    color: var(--accent-color);
+    opacity: 1;
+  }
+
+  .author-bio {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+  }
+
+  .author-footer {
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .author-topics {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+  }
+
+  .read-author-link {
+    color: var(--text-primary);
+  }
+
+  .read-author-link:hover {
+    color: var(--accent-color);
+    opacity: 1;
+  }
+
+  .empty-state {
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+
+  @media (max-width: 768px) {
+    .authors-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,9 +1,10 @@
 ---
-import { getAllPosts } from "../../lib/posts";
+import { getAllPosts, paginateItems } from "../../lib/posts";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import ArticleCard from "../../components/ArticleCard.astro";
+import Pagination from "../../components/Pagination.astro";
 
-const categoryMap: Record<string, string> = {
+const CATEGORY_MAP: Record<string, string> = {
   culture: "Культура",
   technology: "Технологии",
   essays: "Эссе",
@@ -11,44 +12,65 @@ const categoryMap: Record<string, string> = {
 };
 
 const { category } = Astro.params;
-const label = category ? categoryMap[category.toLowerCase()] : undefined;
+const categoryName = category ? CATEGORY_MAP[category.toLowerCase()] : undefined;
 
-if (!label) {
+if (!categoryName) {
   return Astro.redirect("/404");
 }
 
 const allPosts = await getAllPosts();
-const posts = allPosts.filter((p) => p.category.trim().toLowerCase() === label.toLowerCase());
+const categoryPosts = allPosts.filter(
+  (post) => post.category.trim().toLowerCase() === categoryName.toLowerCase(),
+);
+
+const pageParam = Number(Astro.url.searchParams.get("page") || "1");
+const paginated = paginateItems(categoryPosts, pageParam, 9);
 ---
 
-<BaseLayout title={`Рубрика: ${label}`}>
-  <div class="cat-header">
-    <span class="meta-label">Архив рубрики</span>
-    <h1>{label}</h1>
-  </div>
+<BaseLayout title={categoryName} description={`Все публикации в рубрике «${categoryName}»`}>
+  <section class="category-page">
+    <header class="category-header">
+      <span class="meta-label">Рубрика</span>
+      <h1>{categoryName}</h1>
+      <p class="meta-label">
+        Материалов в разделе: {categoryPosts.length}
+        {paginated.totalPages > 1 &&
+          ` • Страница ${paginated.currentPage} из ${paginated.totalPages}`}
+      </p>
+    </header>
 
-  {posts.length > 0 ? (
-    <div class="articles-grid">
-      {posts.map((post) => (
-        <ArticleCard post={post} />
-      ))}
-    </div>
-  ) : (
-    <p class="empty-state">В этой рубрике пока нет опубликованных материалов.</p>
-  )}
+    {paginated.items.length === 0 ? (
+      <p class="empty-msg">В этой рубрике пока нет публикаций.</p>
+    ) : (
+      <>
+        <div class="articles-grid">
+          {paginated.items.map((post) => (
+            <ArticleCard post={post} />
+          ))}
+        </div>
+
+        <Pagination
+          currentPage={paginated.currentPage}
+          totalPages={paginated.totalPages}
+          baseUrl={Astro.url.pathname + Astro.url.search}
+        />
+      </>
+    )}
+  </section>
 </BaseLayout>
 
 <style>
-  .cat-header {
+  .category-header {
+    padding-bottom: 1.5rem;
     border-bottom: 2px solid var(--border-dark);
-    padding-bottom: 1.25rem;
     margin-bottom: 2.5rem;
   }
 
-  .cat-header h1 {
-    font-size: 2.5rem;
+  .category-header h1 {
+    font-size: clamp(2rem, 5vw, 3.4rem);
     font-weight: 500;
-    margin-top: 0.25rem;
+    margin: 0.4rem 0 0.6rem;
+    letter-spacing: -0.02em;
   }
 
   .articles-grid {
@@ -57,10 +79,9 @@ const posts = allPosts.filter((p) => p.category.trim().toLowerCase() === label.t
     gap: 2.5rem;
   }
 
-  .empty-state {
+  .empty-msg {
     color: var(--text-secondary);
     font-style: italic;
-    font-size: 1.15rem;
   }
 
   @media (max-width: 900px) {

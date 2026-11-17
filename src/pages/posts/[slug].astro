@@ -107,7 +107,11 @@ const relatedPosts = [...sameCategoryPosts, ...fallbackPosts].slice(0, 3);
       <h1>{title}</h1>
       <p class="lead">{description}</p>
       <div class="meta-label byline">
-        Текст: {author} &bull; Опубликовано: {formattedDate} &bull; {readingTime}
+        Текст:{" "}
+        <a href={`/author/${post.authorSlug}`} class="author-byline-link">
+          {author}
+        </a>{" "}
+        &bull; Опубликовано: {formattedDate} &bull; {readingTime}
       </div>
     </header>
 

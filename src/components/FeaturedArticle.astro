@@ -23,7 +23,8 @@ const formattedDate = pubDate?.toLocaleDateString("ru-RU", {
     </h1>
     <p class="excerpt">{description}</p>
     <div class="meta-label">
-      Автор: {author} &mdash; {formattedDate} &bull; {readingTime}
+      Автор: <a href={`/author/${post.authorSlug}`}>{author}</a> &mdash; {formattedDate} &bull;{" "}
+      {readingTime}
     </div>
   </div>
 
