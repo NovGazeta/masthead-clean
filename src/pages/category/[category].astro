@@ -1,34 +1,24 @@
 ---
-import { getCollection } from "astro:content";
+import { getAllPosts } from "../../lib/posts";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import ArticleCard from "../../components/ArticleCard.astro";
 
-export async function getStaticPaths() {
-  const categoryMap: Record<string, string> = {
-    culture: "Культура",
-    technology: "Технологии",
-    essays: "Эссе",
-    design: "Дизайн",
-  };
+const categoryMap: Record<string, string> = {
+  culture: "Культура",
+  technology: "Технологии",
+  essays: "Эссе",
+  design: "Дизайн",
+};
 
-  const posts = await getCollection("posts");
+const { category } = Astro.params;
+const label = category ? categoryMap[category.toLowerCase()] : undefined;
 
-  return Object.entries(categoryMap).map(([slug, label]) => {
-    const filteredPosts = posts
-      .filter((p) => p.data.category.trim().toLowerCase() === label.toLowerCase())
-      .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
-
-    return {
-      params: { category: slug },
-      props: {
-        label,
-        posts: filteredPosts,
-      },
-    };
-  });
+if (!label) {
+  return Astro.redirect("/404");
 }
 
-const { label, posts } = Astro.props;
+const allPosts = await getAllPosts();
+const posts = allPosts.filter((p) => p.category.trim().toLowerCase() === label.toLowerCase());
 ---
 
 <BaseLayout title={`Рубрика: ${label}`}>

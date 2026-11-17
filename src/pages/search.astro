@@ -1,0 +1,147 @@
+---
+import { searchPosts } from "../lib/posts";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ArticleCard from "../components/ArticleCard.astro";
+
+const query = Astro.url.searchParams.get("q") ?? "";
+const results = query ? await searchPosts(query) : [];
+---
+
+<BaseLayout title={query ? `Поиск: ${query}` : "Поиск по архиву"}>
+  <section class="search-section">
+    <header class="search-header">
+      <span class="meta-label">Поиск по материалам издания</span>
+      <h1>Архивный поиск</h1>
+
+      <form action="/search" method="get" class="search-page-form">
+        <input
+          type="search"
+          name="q"
+          value={query}
+          placeholder="Введите слово, тему или имя автора..."
+          aria-label="Поисковый запрос"
+          autofocus={!query}
+        />
+        <button type="submit" class="meta-label">
+          Найти
+        </button>
+      </form>
+    </header>
+
+    {query && (
+      <div class="results-meta">
+        <span class="meta-label">
+          {results.length > 0
+            ? `Найдено публикаций по запросу «${query}»: ${results.length}`
+            : `По запросу «${query}» ничего не найдено`}
+        </span>
+      </div>
+    )}
+
+    {results.length > 0 ? (
+      <div class="articles-grid">
+        {results.map((post) => (
+          <ArticleCard post={post} />
+        ))}
+      </div>
+    ) : (
+      query && (
+        <div class="empty-search">
+          <p>
+            Попробуйте изменить формулировку, использовать более общие слова или перейти в одну из
+            рубрик.
+          </p>
+        </div>
+      )
+    )}
+  </section>
+</BaseLayout>
+
+<style>
+  .search-header {
+    border-bottom: 2px solid var(--border-dark);
+    padding-bottom: 2rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .search-header h1 {
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    font-weight: 500;
+    margin: 0.35rem 0 1.5rem;
+  }
+
+  .search-page-form {
+    display: flex;
+    max-width: 620px;
+    border: 1px solid var(--border-dark);
+    background-color: var(--bg-color);
+  }
+
+  .search-page-form input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 0.85rem 1rem;
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    color: var(--text-primary);
+    outline: none;
+  }
+
+  .search-page-form input::placeholder {
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+
+  .search-page-form button {
+    background-color: var(--border-dark);
+    color: var(--bg-color);
+    border: none;
+    padding: 0 1.5rem;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+  }
+
+  .search-page-form button:hover {
+    opacity: 0.85;
+  }
+
+  .results-meta {
+    margin-bottom: 2rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .articles-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2.5rem;
+  }
+
+  .empty-search {
+    padding: 2rem 0;
+    color: var(--text-secondary);
+    font-style: italic;
+    font-size: 1.15rem;
+  }
+
+  @media (max-width: 900px) {
+    .articles-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 600px) {
+    .articles-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .search-page-form {
+      flex-direction: column;
+    }
+
+    .search-page-form button {
+      padding: 0.85rem;
+    }
+  }
+</style>

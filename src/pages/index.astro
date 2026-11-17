@@ -1,15 +1,12 @@
 ---
-import { getCollection } from "astro:content";
+import { getAllPosts } from "../lib/posts";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import FeaturedArticle from "../components/FeaturedArticle.astro";
 import ArticleCard from "../components/ArticleCard.astro";
 
-const allPosts = (await getCollection("posts")).sort(
-  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
-);
-
-const featuredPost = allPosts.find((p) => p.data.featured) || allPosts[0];
-const regularPosts = allPosts.filter((p) => p.id !== featuredPost?.id);
+const allPosts = await getAllPosts();
+const featuredPost = allPosts.find((p) => p.featured) || allPosts[0];
+const regularPosts = allPosts.filter((p) => p.slug !== featuredPost?.slug);
 ---
 
 <BaseLayout title="Главная">
