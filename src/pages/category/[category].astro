@@ -1,11 +1,9 @@
 ---
-import { getAllPosts, paginateItems } from "../../lib/posts";
-import { toSlug, fromSlug } from "../../lib/translit";
+import { getAllPosts, paginateItems } from "@/lib/posts";
+import { fromSlug } from "@/lib/translit";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import ArticleCard from "../../components/ArticleCard.astro";
 import Pagination from "../../components/Pagination.astro";
-
-console.log(Astro.params);
 
 const { category } = Astro.params;
 const categoryName = category ? fromSlug(category) : undefined;

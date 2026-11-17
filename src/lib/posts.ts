@@ -434,7 +434,8 @@ export async function getPostsByTag(tagSlug: string): Promise<{ tagName: string;
 export async function getAllRubrics(): Promise<string[]> {
   const posts = await getAllPosts();
   const rubrics = new Set(posts.map((p) => p.rubric).filter(Boolean));
-  return Array.from(rubrics);
+  return Array.from(rubrics)
+    .sort((a, b) => a.localeCompare(b, 'ru'));
 }
 
 export function paginateItems<T>(
