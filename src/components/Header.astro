@@ -6,8 +6,14 @@ const today = new Date().toLocaleDateString("ru-RU", {
   day: "numeric",
 });
 
+// Служебные ссылки (для правого угла десктопа и верха мобильного меню)
+const utilityLinks = [
+  { name: "Главная", slug: "/" },
+  { name: "О проекте", slug: "/about" },
+];
+
+// Тематические рубрики
 const categories = [
-  { name: "Все материалы", slug: "/" },
   { name: "Культура", slug: "/category/culture" },
   { name: "Технологии", slug: "/category/technology" },
   { name: "Эссе", slug: "/category/essays" },
@@ -19,12 +25,21 @@ const categories = [
   <div class="container">
     <!-- Верхняя служебная панель -->
     <div class="top-bar">
-      <div class="top-meta">
+      <div class="top-left">
         <span class="meta-label">{today}</span>
         <span class="meta-label issue-num">&bull; Выпуск № 42</span>
       </div>
 
       <div class="top-actions">
+        <!-- Служебные ссылки прижаты к правому краю (перед кнопкой темы) на десктопе -->
+        <nav class="utility-nav" aria-label="Служебная навигация">
+          {utilityLinks.map((link) => (
+            <a href={link.slug} class="meta-label">
+              {link.name}
+            </a>
+          ))}
+        </nav>
+
         <!-- Переключатель темной темы -->
         <button
           id="theme-toggle"
@@ -33,7 +48,6 @@ const categories = [
           aria-label="Переключить тему"
           title="Сменить тему оформления"
         >
-          <!-- Иконка солнца (видна в темной теме) -->
           <svg
             class="icon-sun"
             width="18"
@@ -55,7 +69,6 @@ const categories = [
             <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
             <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
           </svg>
-          <!-- Иконка луны (видна в светлой теме) -->
           <svg
             class="icon-moon"
             width="18"
@@ -71,13 +84,14 @@ const categories = [
           </svg>
         </button>
 
-        <!-- Кнопка мобильного меню -->
+        <!-- Кнопка мобильного меню (бургер) -->
         <button
           id="mobile-menu-toggle"
-          class="mobile-menu-btn meta-label"
+          class="mobile-menu-btn icon-btn"
           type="button"
           aria-expanded="false"
           aria-controls="main-nav"
+          aria-label="Меню навигации"
         >
           <svg
             width="18"
@@ -103,9 +117,29 @@ const categories = [
       <p class="tagline">Журнал о цифровом ремесле, культуре и медленном чтении</p>
     </div>
 
-    <!-- Навигация (десктопная + раскрывающаяся мобильная) -->
-    <nav id="main-nav" class="nav-bar" aria-label="Рубрики">
+    <!-- Десктопная навигация под логотипом (только рубрики) -->
+    <nav class="desktop-nav" aria-label="Рубрики">
       <ul>
+        {categories.map((cat) => (
+          <li>
+            <a href={cat.slug} class="meta-label">
+              {cat.name}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+
+    <!-- Мобильное выпадающее меню (открывается по клику на бургер) -->
+    <nav id="main-nav" class="mobile-nav" aria-label="Мобильное меню">
+      <ul>
+        {utilityLinks.map((link) => (
+          <li class="mobile-utility-item">
+            <a href={link.slug} class="meta-label">
+              {link.name}
+            </a>
+          </li>
+        ))}
         {categories.map((cat) => (
           <li>
             <a href={cat.slug} class="meta-label">
@@ -119,7 +153,6 @@ const categories = [
 </header>
 
 <script>
-  // Логика переключения темы
   const themeToggle = document.getElementById("theme-toggle");
   themeToggle?.addEventListener("click", () => {
     const current = document.documentElement.getAttribute("data-theme");
@@ -128,12 +161,11 @@ const categories = [
     localStorage.setItem("theme", next);
   });
 
-  // Логика мобильного меню
   const menuToggle = document.getElementById("mobile-menu-toggle");
-  const mainNav = document.getElementById("main-nav");
+  const mobileNav = document.getElementById("main-nav");
 
   menuToggle?.addEventListener("click", () => {
-    const isOpen = mainNav?.classList.toggle("is-open");
+    const isOpen = mobileNav?.classList.toggle("is-open");
     menuToggle.setAttribute("aria-expanded", String(Boolean(isOpen)));
   });
 </script>
@@ -153,16 +185,31 @@ const categories = [
     gap: 1rem;
   }
 
-  .top-meta {
+  .top-left {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 1rem;
   }
 
   .top-actions {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 1.25rem;
+  }
+
+  .utility-nav {
+    display: flex;
+    gap: 1.25rem;
+  }
+
+  .utility-nav a {
+    color: var(--text-secondary);
+    transition: color 0.2s ease;
+  }
+
+  .utility-nav a:hover {
+    color: var(--accent-color);
+    opacity: 1;
   }
 
   .icon-btn {
@@ -185,7 +232,6 @@ const categories = [
     background-color: var(--surface-color);
   }
 
-  /* Отображение нужной иконки в зависимости от темы */
   :global([data-theme="light"]) .icon-sun,
   :global(:root:not([data-theme="dark"])) .icon-sun {
     display: none;
@@ -197,14 +243,6 @@ const categories = [
 
   .mobile-menu-btn {
     display: none;
-    background: transparent;
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    height: 34px;
-    padding: 0 0.75rem;
-    align-items: center;
-    gap: 0.5rem;
-    cursor: pointer;
   }
 
   .brand-area {
@@ -229,12 +267,13 @@ const categories = [
     font-size: clamp(0.92rem, 2.5vw, 1.05rem);
   }
 
-  .nav-bar {
-    border-bottom: 1px solid var(--border-dark);
+  /* Десктопная навигация */
+  .desktop-nav {
+    border-bottom: 2px solid var(--border-dark);
     padding: 0.75rem 0;
   }
 
-  .nav-bar ul {
+  .desktop-nav ul {
     list-style: none;
     display: flex;
     justify-content: center;
@@ -242,58 +281,74 @@ const categories = [
     gap: 2rem;
   }
 
-  .nav-bar a {
+  .desktop-nav a {
     color: var(--text-primary);
   }
 
-  .nav-bar a:hover {
+  .desktop-nav a:hover {
     color: var(--accent-color);
     opacity: 1;
   }
 
-  /* Мобильная адаптация шапки */
+  /* Мобильная навигация скрыта на десктопе */
+  .mobile-nav {
+    display: none;
+  }
+
+  /* Медиа-запрос для мобильных устройств (до 768px) */
   @media (max-width: 768px) {
     .masthead {
       margin-bottom: 1.75rem;
     }
 
-    .issue-num {
-      display: none;
+    .issue-num,
+    .utility-nav,
+    .desktop-nav {
+      display: none !important; /* Жестко скрываем все десктопные элементы */
     }
 
     .mobile-menu-btn {
-      display: inline-flex;
+      display: inline-flex !important;
     }
 
     .brand-area {
       padding: 1.5rem 0;
     }
 
-    .nav-bar {
+    /* Мобильное меню по умолчанию скрыто, показывается при добавлении .is-open */
+    .mobile-nav {
       display: none;
+      border-bottom: 2px solid var(--border-dark);
       padding: 0;
     }
 
-    .nav-bar.is-open {
+    .mobile-nav.is-open {
       display: block;
     }
 
-    .nav-bar ul {
+    .mobile-nav ul {
+      list-style: none;
+      display: flex;
       flex-direction: column;
       gap: 0;
     }
 
-    .nav-bar li {
+    .mobile-nav li {
       border-bottom: 1px solid var(--border-color);
     }
 
-    .nav-bar li:last-child {
+    .mobile-nav li:last-child {
       border-bottom: none;
     }
 
-    .nav-bar a {
+    .mobile-utility-item {
+      background-color: var(--surface-color);
+    }
+
+    .mobile-nav a {
       display: block;
       padding: 0.85rem 0.25rem;
+      color: var(--text-primary);
     }
   }
 </style>
