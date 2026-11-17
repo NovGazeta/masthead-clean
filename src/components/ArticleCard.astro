@@ -1,25 +1,35 @@
 ---
-import { type Post, slugifyTag } from "@/lib/posts";
+import { type Post, slugifyTag, parseAuthors } from "@/lib/posts";
+import { toSlug, fromSlug } from "@/lib/translit";
 
 interface Props {
   post: Post;
   featured?: boolean;
+  hideRubric?: boolean;
 }
 
-const { post, featured = false } = Astro.props;
+const { post, featured = false, hideRubric = false } = Astro.props;
+
+const authors = parseAuthors(post?.authors || "");
 
 const formattedDate = post.pubDate.toLocaleDateString("ru-RU", {
   day: "numeric",
-  month: "long",
+  month: "short",
   year: "numeric",
 });
 ---
 
 <article class:list={["article-card", { "is-featured": featured }]}>
   <div class="card-meta-top">
-    <span class="category-tag">{post.rubric}</span>
+    {!hideRubric && (
+      <span class="category-tag">
+        <a href={`/category/${toSlug(post.rubric)}`}>{post.rubric}</a>
+      </span>
+    )}
     <span class="meta-label">
-      {post.authors} &bull; {formattedDate} &bull; {post.readingTime}
+      {authors?.length > 0 &&
+        authors.map((author) => <a href={`/author/${toSlug(author.name)}`}>{author.name}</a>)}
+      &bull; {formattedDate} &bull; {post.readingTime}
     </span>
   </div>
 

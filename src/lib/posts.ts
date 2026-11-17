@@ -3,7 +3,7 @@ import { watch, existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 import { marked } from "marked";
-import { toSlug, fromSlug } from "./translit";
+import { toSlug, fromSlug } from "@/lib/translit";
 
 export interface TocItem {
   id: string;
@@ -17,7 +17,7 @@ export interface Post {
   title: string;
   subtitle?: string;
   pubDate: Date;
-  authors: string;
+  authors?: string;
   authorSlug: string;
   authorBio?: string;
   rubric: string;
@@ -509,3 +509,19 @@ export function pluralizeRu(
 export function getPostWord(count: number): string {
   return pluralizeRu(count, ["статья", "статьи", "статей"]);
 }
+
+export const parseAuthors = (authors: string) => {
+  const authorsObj: Record<string, { name: string; role: string; slug: string; }> = {};
+  const matrix = authors.split(",").map((m) => m.trim().split("(").map((a) => a.replaceAll(")", "").trim()).filter((f) => !!f));
+  for (let i = 0; i < matrix.length; i++) {
+    if (matrix[i].length < 1) continue;
+    const [name, role] = matrix[i];
+    const slug = toSlug(name);
+    authorsObj[slug] = {
+      name,
+      role,
+      slug,
+    };
+  }
+  return Object.values(authorsObj);
+};
