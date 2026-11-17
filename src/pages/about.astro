@@ -1,0 +1,101 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="О проекте" description="Информация об издании The Masthead">
+  <article class="about-page">
+    <header class="about-header">
+      <span class="meta-label">Редакционная политика</span>
+      <h1>О проекте</h1>
+    </header>
+
+    <div class="prose">
+      <p>
+        <strong>The Masthead</strong> — независимое цифровое издание, посвященное культуре чтения,
+        цифровому ремеслу, архитектуре интерфейсов и вдумчивому разбору технологий без спешки и
+        новостного шума.
+      </p>
+
+      <h2>Наш подход</h2>
+      <p>
+        Мы верим, что качественный контент требует времени на осмысление. Наша верстка и дизайн
+        вдохновлены классическими печатными газетами и журналами, где во главе угла стоит
+        типографика, воздух на странице и уважение к вниманию читателя.
+      </p>
+
+      <blockquote>
+        «Хороший дизайн не кричит о себе — он расчищает пространство для мысли автора и диалога с
+        читателем.»
+      </blockquote>
+
+      <h2>Технологии</h2>
+      <p>
+        Сайт полностью построен на современном стеке без громоздких CMS и сторонних тяжелых
+        библиотек. Мы используем статический генератор <strong>Astro</strong>, чистый CSS с
+        поддержкой адаптивных сеток и нативные системные шрифты, что обеспечивает мгновенную
+        загрузку страниц и максимальную экологичность кода.
+      </p>
+
+      <h2>Контакты и редакция</h2>
+      <p>
+        Если вы хотите предложить материал, заметить опечатку или обсудить сотрудничество, вы всегда
+        можете связаться с нами через социальные сети или репозиторий проекта.
+      </p>
+    </div>
+  </article>
+</BaseLayout>
+
+<style>
+  .about-page {
+    max-width: 740px;
+    margin: 0 auto;
+    padding-bottom: 3rem;
+  }
+
+  .about-header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 1.5rem;
+  }
+
+  .about-header h1 {
+    font-size: clamp(2.2rem, 4.5vw, 3.2rem);
+    font-weight: 500;
+    line-height: 1.15;
+    margin-top: 0.5rem;
+    letter-spacing: -0.02em;
+  }
+
+  .prose {
+    font-size: 1.18rem;
+    line-height: 1.75;
+  }
+
+  .prose :global(p) {
+    margin-bottom: 1.5rem;
+  }
+
+  .prose :global(h2) {
+    font-size: 1.65rem;
+    font-weight: 500;
+    margin: 2.5rem 0 1rem;
+  }
+
+  .prose :global(blockquote) {
+    border-left: 2px solid var(--border-dark);
+    padding-left: 1.25rem;
+    font-style: italic;
+    color: var(--text-secondary);
+    margin: 2rem 0;
+  }
+
+  @media (max-width: 600px) {
+    .about-header {
+      text-align: left;
+    }
+    .prose {
+      font-size: 1.05rem;
+    }
+  }
+</style>

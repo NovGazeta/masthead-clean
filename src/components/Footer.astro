@@ -1,0 +1,27 @@
+<footer class="site-footer">
+    <div class="container footer-inner">
+        <div>
+            <strong>THE MASTHEAD</strong>
+            <p class="meta-label" style="margin-top: 0.5rem;">
+                Сделано на чистом Astro.js без сторонних CMS-зависимостей.
+            </p>
+        </div>
+        <div class="meta-label">&copy; {new Date().getFullYear()} Все права защищены.</div>
+    </div>
+</footer>
+
+<style>
+    .site-footer {
+        margin-top: 5rem;
+        border-top: 2px solid var(--border-dark);
+        padding: 2.5rem 0 4rem;
+    }
+
+    .footer-inner {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        gap: 1.5rem;
+    }
+</style>
