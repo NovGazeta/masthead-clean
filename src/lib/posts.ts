@@ -1,9 +1,9 @@
-import fs from 'node:fs/promises';
-import { watch, existsSync } from 'node:fs';
-import path from 'node:path';
-import matter from 'gray-matter';
-import { marked } from 'marked';
-import { toSlug, fromSlug } from './translit';
+import fs from "node:fs/promises";
+import { watch, existsSync } from "node:fs";
+import path from "node:path";
+import matter from "gray-matter";
+import { marked } from "marked";
+import { toSlug, fromSlug } from "./translit";
 
 export interface TocItem {
   id: string;
@@ -62,8 +62,8 @@ export interface SearchResult extends Post {
   snippetHtml: string;
 }
 
-const ARTICLES_DIR = path.resolve(process.cwd(), 'src/content/articles');
-const POSTS_DIR = path.resolve(process.cwd(), 'src/content/posts');
+const ARTICLES_DIR = path.resolve(process.cwd(), "src/content/articles");
+const POSTS_DIR = path.resolve(process.cwd(), "src/content/posts");
 
 let cachedPosts: Post[] | null = null;
 let cachedPostsMap: Map<string, Post> | null = null;
@@ -79,21 +79,25 @@ function ensureWatcher(): void {
   if (isWatcherInitialized || !existsSync(ARTICLES_DIR)) return;
 
   try {
-    const watcher = watch(ARTICLES_DIR, { recursive: true, persistent: false }, (_eventType, filename) => {
-      if (!filename || filename.endsWith('.md')) {
-        invalidatePostsCache();
-      }
-    });
+    const watcher = watch(
+      ARTICLES_DIR,
+      { recursive: true, persistent: false },
+      (_eventType, filename) => {
+        if (!filename || filename.endsWith(".md")) {
+          invalidatePostsCache();
+        }
+      },
+    );
 
-    watcher.on('error', (err) => {
-      console.error('Ошибка наблюдателя директории статей:', err);
+    watcher.on("error", (err) => {
+      console.error("Ошибка наблюдателя директории статей:", err);
       isWatcherInitialized = false;
       invalidatePostsCache();
     });
 
     isWatcherInitialized = true;
   } catch (err) {
-    console.error('Не удалось запустить рекурсивный fs.watch:', err);
+    console.error("Не удалось запустить рекурсивный fs.watch:", err);
   }
 }
 
@@ -110,13 +114,13 @@ export function authorNameFromSlug(slug: string): string {
   return fromSlug(slug, false)
     .split(/(\s+|-)/)
     .map((part) => (part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part))
-    .join('');
+    .join("");
 }
 
 function stripMarkdown(md: string): string {
   return md
-    .replace(/[#>*_`~\[\]()!-]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/[#>*_`~\[\]()!-]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -135,11 +139,11 @@ function calculateReadingTime(plainText: string, customReadingTime?: string): st
 function slugifyHeading(text: string): string {
   return text
     .toLowerCase()
-    .replace(/<[^>]+>/g, '')
-    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/<[^>]+>/g, "")
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
     .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
 }
 
 function extractTocAndInjectIds(rawHtml: string): { html: string; toc: TocItem[] } {
@@ -150,14 +154,14 @@ function extractTocAndInjectIds(rawHtml: string): { html: string; toc: TocItem[]
     /<h([23])([^>]*)>([\s\S]*?)<\/h\1>/gi,
     (_match, levelStr: string, attrs: string, innerHtml: string) => {
       const level = Number(levelStr) as 2 | 3;
-      const cleanText = innerHtml.replace(/<[^>]+>/g, '').trim();
+      const cleanText = innerHtml.replace(/<[^>]+>/g, "").trim();
 
       if (!cleanText) {
         return `<h${level}${attrs}>${innerHtml}</h${level}>`;
       }
 
       const existingIdMatch = attrs.match(/\bid=["']([^"']+)["']/i);
-      let id = existingIdMatch ? existingIdMatch[1] : slugifyHeading(cleanText) || 'section';
+      let id = existingIdMatch ? existingIdMatch[1] : slugifyHeading(cleanText) || "section";
 
       const count = usedIds.get(id) ?? 0;
       usedIds.set(id, count + 1);
@@ -172,7 +176,7 @@ function extractTocAndInjectIds(rawHtml: string): { html: string; toc: TocItem[]
       }
 
       return `<h${level}${attrs} id="${id}">${innerHtml}</h${level}>`;
-    }
+    },
   );
 
   return { html, toc };
@@ -180,41 +184,41 @@ function extractTocAndInjectIds(rawHtml: string): { html: string; toc: TocItem[]
 
 function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function buildHighlightedSnippet(post: Post, query: string): string {
-  const sourceText = [post.subtitle, post.plainText].filter(Boolean).join(' — ');
+  const sourceText = [post.subtitle, post.plainText].filter(Boolean).join(" — ");
   const lowerText = sourceText.toLowerCase();
   const lowerQuery = query.toLowerCase();
   const matchIndex = lowerText.indexOf(lowerQuery);
 
-  let rawExcerpt = '';
+  let rawExcerpt = "";
 
   if (matchIndex === -1) {
-    rawExcerpt = sourceText.slice(0, 180) + (sourceText.length > 180 ? '…' : '');
+    rawExcerpt = sourceText.slice(0, 180) + (sourceText.length > 180 ? "…" : "");
   } else {
     const radius = 85;
     const start = Math.max(0, matchIndex - radius);
     const end = Math.min(sourceText.length, matchIndex + query.length + radius);
 
-    const prefix = start > 0 ? '…' : '';
-    const suffix = end < sourceText.length ? '…' : '';
+    const prefix = start > 0 ? "…" : "";
+    const suffix = end < sourceText.length ? "…" : "";
     rawExcerpt = prefix + sourceText.slice(start, end).trim() + suffix;
   }
 
   const safeText = escapeHtml(rawExcerpt);
-  const regex = new RegExp(`(${escapeRegExp(escapeHtml(query))})`, 'gi');
+  const regex = new RegExp(`(${escapeRegExp(escapeHtml(query))})`, "gi");
 
-  return safeText.replace(regex, '<mark>$1</mark>');
+  return safeText.replace(regex, "<mark>$1</mark>");
 }
 
 async function getMarkdownFilesRecursively(dir: string): Promise<string[]> {
@@ -226,7 +230,7 @@ async function getMarkdownFilesRecursively(dir: string): Promise<string[]> {
       if (file.isDirectory()) {
         const subFiles = await getMarkdownFilesRecursively(resPath);
         results = results.concat(subFiles);
-      } else if (file.isFile() && file.name.endsWith('.md')) {
+      } else if (file.isFile() && file.name.endsWith(".md")) {
         results.push(resPath);
       }
     }
@@ -243,9 +247,9 @@ async function loadPostsFromDisk(): Promise<Post[]> {
     const rawPosts = await Promise.all(
       mdFiles.map(async (filePath) => {
         const relativePath = path.relative(ARTICLES_DIR, filePath);
-        const slug = relativePath.replace(/\.md$/, '').replace(/\\/g, '/');
+        const slug = relativePath.replace(/\.md$/, "").replace(/\\/g, "/");
 
-        const rawFile = await fs.readFile(filePath, 'utf-8');
+        const rawFile = await fs.readFile(filePath, "utf-8");
         const { data, content } = matter(rawFile);
 
         const isDraft = Boolean(data.draft);
@@ -257,22 +261,25 @@ async function loadPostsFromDisk(): Promise<Post[]> {
         const parsedHtml = await marked.parse(content);
         const { html, toc } = extractTocAndInjectIds(parsedHtml);
 
-        const authorsStr = (data.authors ?? data.author ?? 'Редакция').trim();
-        const rubricStr = (data.rubric ?? data.category ?? 'Общее').trim();
+        const authorsStr = (data.authors ?? data.author ?? "Редакция").trim();
+        const rubricStr = (data.rubric ?? data.category ?? "Общее").trim();
         const dateValue = data.date ?? data.pubDate;
         const pubDate = dateValue ? new Date(dateValue) : new Date();
 
         let rawTags: string[] = [];
         if (Array.isArray(data.tags)) {
           rawTags = data.tags.map((t) => String(t).trim()).filter(Boolean);
-        } else if (typeof data.tags === 'string' && data.tags.trim()) {
-          rawTags = data.tags.split(',').map((t) => t.trim()).filter(Boolean);
+        } else if (typeof data.tags === "string" && data.tags.trim()) {
+          rawTags = data.tags
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean);
         }
 
         return {
           slug,
           source: data.source ? String(data.source) : undefined,
-          title: data.title ?? 'Без названия',
+          title: data.title ?? "Без названия",
           subtitle: data.subtitle ? String(data.subtitle) : undefined,
           pubDate,
           authors: authorsStr,
@@ -290,7 +297,7 @@ async function loadPostsFromDisk(): Promise<Post[]> {
           htmlContent: html,
           plainText,
         } satisfies Post;
-      })
+      }),
     );
 
     const posts = rawPosts.filter((p): p is Post => p !== null);
@@ -301,7 +308,7 @@ async function loadPostsFromDisk(): Promise<Post[]> {
 
     return sorted;
   } catch (error) {
-    console.error('Ошибка чтения коллекции articles:', error);
+    console.error("Ошибка чтения коллекции articles:", error);
     return [];
   }
 }
@@ -323,7 +330,7 @@ export async function getAllPosts(): Promise<Post[]> {
 }
 
 export async function getPostBySlug(slug: string): Promise<Post | null> {
-  const safeSlug = slug.replace(/^\/+/, '').replace(/\/+$/, '');
+  const safeSlug = slug.replace(/^\/+/, "").replace(/\/+$/, "");
   ensureWatcher();
 
   if (cachedPostsMap) {
@@ -354,7 +361,7 @@ export async function getAllAuthors(): Promise<AuthorSummary[]> {
       map.set(post.authorSlug, {
         name: post.authors,
         slug: post.authorSlug,
-        bio: post.authorBio ?? 'Постоянный автор и обозреватель издания The Журнал.',
+        bio: post.authorBio ?? "Постоянный автор и обозреватель издания The Журнал.",
         postCount: 1,
         latestPostDate: post.pubDate,
         rubrics: new Set([post.rubric]),
@@ -376,11 +383,11 @@ export async function getAllAuthors(): Promise<AuthorSummary[]> {
       ...entry,
       rubrics: Array.from(entry.rubrics),
     }))
-    .sort((a, b) => b.postCount - a.postCount || a.name.localeCompare(b.name, 'ru'));
+    .sort((a, b) => b.postCount - a.postCount || a.name.localeCompare(b.name, "ru"));
 }
 
 export async function getAuthorBySlug(
-  authorSlug: string
+  authorSlug: string,
 ): Promise<{ author: AuthorSummary; posts: Post[] } | null> {
   const safeSlug = path.basename(authorSlug);
   const [authors, allPosts] = await Promise.all([getAllAuthors(), getAllPosts()]);
@@ -409,16 +416,16 @@ export async function getAllTags(): Promise<TagSummary[]> {
 
   return Array.from(tagMap.values())
     .map((t) => ({ name: t.name, slug: t.slug, postCount: t.count }))
-    .sort((a, b) => b.postCount - a.postCount || a.name.localeCompare(b.name, 'ru'));
+    .sort((a, b) => b.postCount - a.postCount || a.name.localeCompare(b.name, "ru"));
 }
 
-export async function getPostsByTag(tagSlug: string): Promise<{ tagName: string; posts: Post[] } | null> {
+export async function getPostsByTag(
+  tagSlug: string,
+): Promise<{ tagName: string; posts: Post[] } | null> {
   const safeSlug = path.basename(tagSlug);
   const posts = await getAllPosts();
 
-  const matchedPosts = posts.filter((post) =>
-    post.tags.some((t) => slugifyTag(t) === safeSlug)
-  );
+  const matchedPosts = posts.filter((post) => post.tags.some((t) => slugifyTag(t) === safeSlug));
 
   if (matchedPosts.length === 0) return null;
 
@@ -434,14 +441,13 @@ export async function getPostsByTag(tagSlug: string): Promise<{ tagName: string;
 export async function getAllRubrics(): Promise<string[]> {
   const posts = await getAllPosts();
   const rubrics = new Set(posts.map((p) => p.rubric).filter(Boolean));
-  return Array.from(rubrics)
-    .sort((a, b) => a.localeCompare(b, 'ru'));
+  return Array.from(rubrics).sort((a, b) => a.localeCompare(b, "ru"));
 }
 
 export function paginateItems<T>(
   items: T[],
   requestedPage: number,
-  perPage = 9
+  perPage = 9,
 ): PaginatedResult<T> {
   const totalItems = items.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
@@ -482,7 +488,7 @@ export async function searchPosts(query: string): Promise<SearchResult[]> {
         post.plainText,
       ]
         .filter(Boolean)
-        .join(' ')
+        .join(" ")
         .toLowerCase();
 
       return searchable.includes(lowerQuery);
@@ -492,7 +498,6 @@ export async function searchPosts(query: string): Promise<SearchResult[]> {
       snippetHtml: buildHighlightedSnippet(post, trimmed),
     }));
 }
-
 
 /**
  * Склоняет существительное в зависимости от числительного (1 статья, 2 статьи, 5 статей)

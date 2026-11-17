@@ -1,21 +1,21 @@
-import type { APIRoute } from 'astro';
-import { getAllPosts } from '../lib/posts';
+import type { APIRoute } from "astro";
+import { getAllPosts } from "../lib/posts";
 
 // Экранирование спецсимволов для корректного XML
 function escapeXml(str: string): string {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 export const GET: APIRoute = async ({ site, url }) => {
   const posts = await getAllPosts();
 
   // Базовый URL сайта (берется из astro.config.mjs или из текущего запроса)
-  const baseUrl = (site?.toString() || url.origin).replace(/\/$/, '');
+  const baseUrl = (site?.toString() || url.origin).replace(/\/$/, "");
   const lastBuildDate = posts[0]?.pubDate.toUTCString() || new Date().toUTCString();
 
   const itemsXml = posts
@@ -35,7 +35,7 @@ export const GET: APIRoute = async ({ site, url }) => {
       <content:encoded><![CDATA[${post.htmlContent}]]></content:encoded>
     </item>`;
     })
-    .join('');
+    .join("");
 
   const rssXml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom">
@@ -52,8 +52,8 @@ export const GET: APIRoute = async ({ site, url }) => {
   return new Response(rssXml.trim(), {
     status: 200,
     headers: {
-      'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=300',
+      "Content-Type": "application/xml; charset=utf-8",
+      "Cache-Control": "public, max-age=300",
     },
   });
 };

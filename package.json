@@ -4,19 +4,19 @@
   "version": "0.0.1",
   "private": false,
   "license": "MIT",
-	"homepage": "https://masthead-clean.vercel.app",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/NovGazeta/masthead-clean"
-	},
-	"bugs": {
-		"url": "https://github.com/NovGazeta/masthead-clean/issues"
-	},
-	"author": {
-		"name": "Denis Glebko",
-		"email": "saturnych@gmail.com",
-		"url": "https://github.com/Saturnych"
-	},
+  "homepage": "https://masthead-clean.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NovGazeta/masthead-clean"
+  },
+  "bugs": {
+    "url": "https://github.com/NovGazeta/masthead-clean/issues"
+  },
+  "author": {
+    "name": "Denis Glebko",
+    "email": "saturnych@gmail.com",
+    "url": "https://github.com/Saturnych"
+  },
   "scripts": {
     "dev": "astro dev --host --mode development --port 5555",
     "dev:local": "astro dev --mode development --port 5555",
@@ -46,8 +46,8 @@
     "node": ">=24.22.1"
   },
   "keywords": [
-		"astro",
-		"typescript",
-		"md"
-	]
+    "astro",
+    "typescript",
+    "md"
+  ]
 }

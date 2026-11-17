@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap");
 
 :root {
   --bg-color: #faf9f6;
@@ -9,13 +9,13 @@
   --border-dark: #141413;
   --accent-color: #8b261d;
 
-  --font-serif: 'Newsreader', Georgia, serif;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: "Newsreader", Georgia, serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
 
   --container-max: 1200px;
 }
 
-[data-theme='dark'] {
+[data-theme="dark"] {
   --bg-color: #131312;
   --surface-color: #1c1c1a;
   --text-primary: #eceae4;
@@ -41,7 +41,9 @@ body {
   font-family: var(--font-serif);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
 }
 
 a {
@@ -79,7 +81,7 @@ a:hover {
 }
 
 /* Смягчение яркости изображений в темной теме */
-[data-theme='dark'] img {
+[data-theme="dark"] img {
   filter: brightness(0.9) contrast(1.05);
 }
 

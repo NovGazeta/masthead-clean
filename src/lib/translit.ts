@@ -5,48 +5,48 @@
  */
 const CYR_TO_LAT: Record<string, string> = {
   // Трёхбуквенные
-  'щ': 'shh',
+  щ: "shh",
 
   // Двухбуквенные (важно: одиночные s, c, z, y, e не должны давать коллизий)
-  'ё': 'jo',
-  'ж': 'zh',
-  'х': 'kh',
-  'ц': 'cz',
-  'ч': 'ch',
-  'ш': 'sh',
-  'ъ': 'xx',
-  'ы': 'y',
-  'ь': 'x',
-  'э': 'eh',
-  'ю': 'ju',
-  'я': 'ja',
+  ё: "jo",
+  ж: "zh",
+  х: "kh",
+  ц: "cz",
+  ч: "ch",
+  ш: "sh",
+  ъ: "xx",
+  ы: "y",
+  ь: "x",
+  э: "eh",
+  ю: "ju",
+  я: "ja",
 
   // Однобуквенные
-  'а': 'a',
-  'б': 'b',
-  'в': 'v',
-  'г': 'g',
-  'д': 'd',
-  'е': 'e',
-  'з': 'z',
-  'и': 'i',
-  'й': 'j',
-  'к': 'k',
-  'л': 'l',
-  'м': 'm',
-  'н': 'n',
-  'о': 'o',
-  'п': 'p',
-  'р': 'r',
-  'с': 's',
-  'т': 't',
-  'у': 'u',
-  'ф': 'f',
+  а: "a",
+  б: "b",
+  в: "v",
+  г: "g",
+  д: "d",
+  е: "e",
+  з: "z",
+  и: "i",
+  й: "j",
+  к: "k",
+  л: "l",
+  м: "m",
+  н: "n",
+  о: "o",
+  п: "p",
+  р: "r",
+  с: "s",
+  т: "t",
+  у: "u",
+  ф: "f",
 };
 
 // Автоматически строим обратный словарь (латиница -> кириллица)
 const LAT_TO_CYR: Record<string, string> = Object.fromEntries(
-  Object.entries(CYR_TO_LAT).map(([cyr, lat]) => [lat, cyr])
+  Object.entries(CYR_TO_LAT).map(([cyr, lat]) => [lat, cyr]),
 );
 
 // Сортируем латинские токены по убыванию длины (сначала 'shh', потом 'sh', 'zh' и т.д.)
@@ -57,17 +57,17 @@ const SORTED_LAT_TOKENS = Object.keys(LAT_TO_CYR).sort((a, b) => b.length - a.le
  * Дефисы внутри слов заменяются на '--', чтобы отличать их от пробелов ('-').
  */
 export function toSlug(text: string): string {
-  if (!text) return '';
+  if (!text) return "";
 
   const normalized = text
     .trim()
     .toLowerCase()
     // Сохраняем дефисы внутри слов как двойной дефис '--'
-    .replace(/-/g, '--')
+    .replace(/-/g, "--")
     // Пробелы и разделители превращаем в одиночный дефис '-'
-    .replace(/\s+/g, '-');
+    .replace(/\s+/g, "-");
 
-  let result = '';
+  let result = "";
   for (const char of normalized) {
     if (CYR_TO_LAT[char] !== undefined) {
       result += CYR_TO_LAT[char];
@@ -77,7 +77,7 @@ export function toSlug(text: string): string {
     // Остальная пунктуация (кавычки, точки, запятые) отбрасывается для чистого URL
   }
 
-  return result.replace(/-{3,}/g, '--').replace(/^-+|-+$/g, '');
+  return result.replace(/-{3,}/g, "--").replace(/^-+|-+$/g, "");
 }
 
 /**
@@ -85,20 +85,20 @@ export function toSlug(text: string): string {
  * Опция capitalizeFirst делает первую букву заглавной (по умолчанию true).
  */
 export function fromSlug(slug: string, capitalizeFirst = true): string {
-  if (!slug) return '';
+  if (!slug) return "";
 
   // Разбиваем по одиночному дефису (пробелы), сохраняя двойные дефисы '--'
   const words = slug
     .toLowerCase()
-    .replace(/--/g, '\u0000') // временный маркер для реального дефиса
-    .split('-')
+    .replace(/--/g, "\u0000") // временный маркер для реального дефиса
+    .split("-")
     .map((word) => {
-      let decoded = '';
+      let decoded = "";
       let i = 0;
 
       while (i < word.length) {
-        if (word[i] === '\u0000') {
-          decoded += '-';
+        if (word[i] === "\u0000") {
+          decoded += "-";
           i += 1;
           continue;
         }
@@ -122,7 +122,7 @@ export function fromSlug(slug: string, capitalizeFirst = true): string {
       return decoded;
     });
 
-  const sentence = words.join(' ');
+  const sentence = words.join(" ");
   if (!capitalizeFirst || sentence.length === 0) return sentence;
 
   return sentence.charAt(0).toUpperCase() + sentence.slice(1);
