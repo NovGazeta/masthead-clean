@@ -7,7 +7,7 @@ authors: ""
 rubric: "Общество"
 genre: "Сюжеты"
 tags: ""
-featured: true
+featured: false
 ---
 
 # АКЦИЯ «НОВОЙ ГАЗЕТЫ» «НЕТ МИГАЛКАМ НА ДОРОГАХ»
