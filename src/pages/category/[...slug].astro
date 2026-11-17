@@ -1,24 +1,45 @@
 ---
 import { getAllPosts, paginateItems } from "@/lib/posts";
-import { fromSlug } from "@/lib/translit";
+import { fromSlug, toSlug } from "@/lib/translit";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import ArticleCard from "../../components/ArticleCard.astro";
 import Pagination from "../../components/Pagination.astro";
 
-const { category } = Astro.params;
-const categoryName = category ? fromSlug(category) : undefined;
+const { slug } = Astro.params;
+const segments = slug ? slug.split("/") : [];
+
+const categoryName = segments.length > 0 ? fromSlug(segments[0]) : undefined;
 
 if (!categoryName) {
   return Astro.redirect("/404");
 }
+
+let currentPage = 1;
+
+if (segments.length > 1 && segments[1]) {
+  const parsedPage = parseInt(segments[1], 10);
+  if (!isNaN(parsedPage) && parsedPage > 1) {
+    currentPage = parsedPage;
+  }
+}
+
+const ARTICLES_PER_PAGE = 12;
 
 const allPosts = await getAllPosts();
 const categoryPosts = allPosts.filter(
   (post) => post.rubric.trim().toLowerCase() === categoryName.toLowerCase(),
 );
 
-const pageParam = Number(Astro.url.searchParams.get("page") || "1");
-const paginated = paginateItems(categoryPosts, pageParam, 9);
+const totalPosts = categoryPosts.length;
+const totalPages = Math.max(1, Math.ceil(totalPosts / ARTICLES_PER_PAGE));
+
+// Если запросили несуществующую страницу за пределами диапазона — 404
+if (currentPage > totalPages) {
+  return new Response(null, { status: 404 });
+}
+
+const startIndex = (currentPage - 1) * ARTICLES_PER_PAGE;
+const paginatedPosts = categoryPosts.slice(startIndex, startIndex + ARTICLES_PER_PAGE);
 ---
 
 <BaseLayout title={categoryName} description={`Все публикации в рубрике «${categoryName}»`}>
@@ -28,25 +49,24 @@ const paginated = paginateItems(categoryPosts, pageParam, 9);
       <h1>{categoryName}</h1>
       <p class="meta-label">
         Материалов в разделе: {categoryPosts.length}
-        {paginated.totalPages > 1 &&
-          ` • Страница ${paginated.currentPage} из ${paginated.totalPages}`}
+        {totalPages > 1 && ` • Страница ${currentPage} из ${totalPages}`}
       </p>
     </header>
 
-    {paginated.items.length === 0 ? (
+    {paginatedPosts.length === 0 ? (
       <p class="empty-msg">В этой рубрике пока нет публикаций.</p>
     ) : (
       <>
         <div class="articles-grid">
-          {paginated.items.map((post) => (
+          {paginatedPosts.map((post) => (
             <ArticleCard post={post} />
           ))}
         </div>
 
         <Pagination
-          currentPage={paginated.currentPage}
-          totalPages={paginated.totalPages}
-          baseUrl={Astro.url.pathname + Astro.url.search}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          basePath={`/category/${toSlug(categoryName)}`}
         />
       </>
     )}

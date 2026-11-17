@@ -2,9 +2,9 @@
 interface Props {
   currentPage: number;
   totalPages: number;
-  /** Базовый путь, например "/" или "/archive". По умолчанию берется из Astro.url.pathname */
+  /** Базовый путь, например "" или "/archive/2026" или "/search" */
   basePath?: string;
-  /** Дополнительные query-параметры для сохранения (например, { year: 2026 } или { q: "поиск" }) */
+  /** Дополнительные query-параметры (например, { q: "запрос" }) */
   queryParams?: Record<string, string | number | undefined>;
   ariaLabel?: string;
 }
@@ -12,7 +12,7 @@ interface Props {
 const {
   currentPage,
   totalPages,
-  basePath = Astro.url.pathname,
+  basePath = "",
   queryParams = {},
   ariaLabel = "Навигация по страницам",
 } = Astro.props;
@@ -37,20 +37,26 @@ function getPageNumbers(current: number, total: number): (number | "...")[] {
 }
 
 function buildPageHref(page: number): string {
-  const params = new URLSearchParams();
+  const cleanBase = basePath.endsWith("/") ? basePath.slice(0, -1) : basePath;
 
+  // Формируем базовый путь для страницы
+  let path = "";
+  if (page === 1) {
+    path = cleanBase || "/";
+  } else {
+    path = `${cleanBase}/${page}`;
+  }
+
+  // Добавляем query-параметры (если они есть, например ?q=...)
+  const params = new URLSearchParams();
   for (const [key, value] of Object.entries(queryParams)) {
     if (value !== undefined && value !== "") {
       params.set(key, String(value));
     }
   }
 
-  if (page > 1) {
-    params.set("page", String(page));
-  }
-
   const queryString = params.toString();
-  return queryString ? `${basePath}?${queryString}` : basePath;
+  return queryString ? `${path}?${queryString}` : path;
 }
 
 const pageNumbers = getPageNumbers(safePage, totalPages);
@@ -71,7 +77,7 @@ const pageNumbers = getPageNumbers(safePage, totalPages);
         <span class="page-dots meta-label">...</span>
       ) : (
         <a
-          href={buildPageHref(p)}
+          href={buildPageHref(p as number)}
           class={`page-num meta-label ${p === safePage ? "is-active" : ""}`}
           aria-current={p === safePage ? "page" : undefined}
         >
