@@ -29,6 +29,15 @@ const formattedDate = pubDate?.toLocaleDateString("ru-RU", {
   <div class="meta-label card-meta">
     <a href={`/author/${post.authorSlug}`}>{author}</a> &bull; {formattedDate} &bull; {readingTime}
   </div>
+  {post.tags && post.tags.length > 0 && (
+    <div class="card-tags">
+      {post.tags.map((tag) => (
+        <a href={`/tag/${slugifyTag(tag)}`} class="meta-label tag-link">
+          #{tag}
+        </a>
+      ))}
+    </div>
+  )}
 </article>
 
 <style>

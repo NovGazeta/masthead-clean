@@ -138,6 +138,19 @@ const relatedPosts = [...sameCategoryPosts, ...fallbackPosts].slice(0, 3);
 
     <div class="prose" set:html={htmlContent} />
 
+    {post.tags && post.tags.length > 0 && (
+      <div class="article-tags-bar">
+        <span class="meta-label">Теги:</span>
+        <div class="tags-list">
+          {post.tags.map((tag) => (
+            <a href={`/tag/${slugifyTag(tag)}`} class="meta-label tag-link">
+              #{tag}
+            </a>
+          ))}
+        </div>
+      </div>
+    )}
+
     <!-- Компактная панель шеринга и копирования ссылки -->
     <footer class="share-bar" aria-label="Поделиться публикацией">
       <span class="meta-label share-title">Поделиться материалом в:</span>

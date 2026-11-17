@@ -1,0 +1,91 @@
+---
+import { getAllTags, getPostsByTag, paginateItems, slugifyTag } from "../../lib/posts";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ArticleCard from "../../components/ArticleCard.astro";
+import Pagination from "../../components/Pagination.astro";
+
+export async function getStaticPaths() {
+  const tags = await getAllTags();
+  return tags.map((tag) => ({
+    params: { slug: tag.slug },
+  }));
+}
+
+const { slug } = Astro.params;
+
+if (!slug) {
+  return Astro.redirect("/404");
+}
+
+const result = await getPostsByTag(slug);
+
+if (!result) {
+  return Astro.redirect("/404");
+}
+
+const { tagName, posts } = result;
+const pageParam = Number(Astro.url.searchParams.get("page") || "1");
+const paginated = paginateItems(posts, pageParam, 9);
+---
+
+<BaseLayout
+  title={`Тег: ${tagName}`}
+  description={`Все публикации с тегом «${tagName}» в журнале The Masthead`}
+>
+  <section class="tag-page">
+    <header class="tag-header">
+      <span class="meta-label">Метка архива</span>
+      <h1>#{tagName}</h1>
+      <p class="meta-label">
+        Материалов по тегу: {posts.length}
+        {paginated.totalPages > 1 &&
+          ` • Страница ${paginated.currentPage} из ${paginated.totalPages}`}
+      </p>
+    </header>
+
+    <div class="articles-grid">
+      {paginated.items.map((post) => (
+        <ArticleCard post={post} />
+      ))}
+    </div>
+
+    <Pagination
+      currentPage={paginated.currentPage}
+      totalPages={paginated.totalPages}
+      baseUrl={Astro.url.pathname + Astro.url.search}
+    />
+  </section>
+</BaseLayout>
+
+<style>
+  .tag-header {
+    padding-bottom: 1.5rem;
+    border-bottom: 2px solid var(--border-dark);
+    margin-bottom: 2.5rem;
+  }
+
+  .tag-header h1 {
+    font-size: clamp(2rem, 5vw, 3.4rem);
+    font-weight: 500;
+    margin: 0.4rem 0 0.6rem;
+    letter-spacing: -0.02em;
+  }
+
+  .articles-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2.5rem;
+  }
+
+  @media (max-width: 900px) {
+    .articles-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 600px) {
+    .articles-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

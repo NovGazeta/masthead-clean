@@ -33,6 +33,12 @@ export const GET: APIRoute = async ({ site, url }) => {
       loc: `${baseUrl}/archive`,
       lastmod: latestPostDate,
       changefreq: 'weekly',
+      priority: '0.9',
+    },
+    {
+      loc: `${baseUrl}/tags`,
+      lastmod: latestPostDate,
+      changefreq: 'weekly',
       priority: '0.8',
     },
     {

@@ -19,6 +19,7 @@ export interface Post {
   authorSlug: string;
   authorBio?: string;
   category: string;
+  tags: string[];
   featured: boolean;
   image?: string;
   imageCaption?: string;
@@ -35,6 +36,12 @@ export interface AuthorSummary {
   postCount: number;
   latestPostDate: Date;
   categories: string[];
+}
+
+export interface TagSummary {
+  name: string;
+  slug: string;
+  postCount: number;
 }
 
 export interface PaginatedResult<T> {
@@ -91,6 +98,22 @@ const CYRILLIC_MAP: Record<string, string> = {
   п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'kh', ц: 'ts',
   ч: 'ch', ш: 'sh', щ: 'shch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
 };
+
+export function slugifyTag(name: string): string {
+  const transliterated = name
+    .toLowerCase()
+    .split('')
+    .map((char) => CYRILLIC_MAP[char] ?? char)
+    .join('');
+
+  return (
+    transliterated
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-') || 'general'
+  );
+}
 
 export function slugifyAuthor(name: string): string {
   const transliterated = name
@@ -228,6 +251,14 @@ async function loadPostsFromDisk(): Promise<Post[]> {
         const { html, toc } = extractTocAndInjectIds(parsedHtml);
         const authorName = (data.author ?? 'Редакция').trim();
 
+        // Парсинг тегов из frontmatter (массив или строка с запятыми)
+        let rawTags: string[] = [];
+        if (Array.isArray(data.tags)) {
+          rawTags = data.tags.map((t) => String(t).trim()).filter(Boolean);
+        } else if (typeof data.tags === 'string') {
+          rawTags = data.tags.split(',').map((t) => t.trim()).filter(Boolean);
+        }
+
         return {
           slug,
           title: data.title ?? 'Без названия',
@@ -237,6 +268,7 @@ async function loadPostsFromDisk(): Promise<Post[]> {
           authorSlug: data.authorSlug ? String(data.authorSlug).trim() : slugifyAuthor(authorName),
           authorBio: data.authorBio ? String(data.authorBio).trim() : undefined,
           category: data.category ?? 'Общее',
+          tags: rawTags,
           featured: Boolean(data.featured),
           image: data.image,
           imageCaption: data.imageCaption,
@@ -288,7 +320,6 @@ export async function getPostBySlug(slug: string): Promise<Post | null> {
   return cachedPostsMap?.get(safeSlug) ?? null;
 }
 
-// Сбор агрегированного списка всех авторов издания
 export async function getAllAuthors(): Promise<AuthorSummary[]> {
   const posts = await getAllPosts();
   const map = new Map<
@@ -347,7 +378,44 @@ export async function getAuthorBySlug(
   return { author, posts };
 }
 
-// Универсальная серверная пагинация списков
+// Сбор всех уникальных тегов
+export async function getAllTags(): Promise<TagSummary[]> {
+  const posts = await getAllPosts();
+  const tagMap = new Map<string, { name: string; slug: string; count: number }>();
+
+  for (const post of posts) {
+    for (const rawTag of post.tags) {
+      const slug = slugifyTag(rawTag);
+      if (!tagMap.has(slug)) {
+        tagMap.set(slug, { name: rawTag, slug, count: 1 });
+      } else {
+        tagMap.get(slug)!.count += 1;
+      }
+    }
+  }
+
+  return Array.from(tagMap.values())
+    .map((t) => ({ name: t.name, slug: t.slug, postCount: t.count }))
+    .sort((a, b) => b.postCount - a.postCount || a.name.localeCompare(b.name, 'ru'));
+}
+
+export async function getPostsByTag(tagSlug: string): Promise<{ tagName: string; posts: Post[] } | null> {
+  const safeSlug = path.basename(tagSlug);
+  const posts = await getAllPosts();
+
+  const matchedPosts = posts.filter((post) =>
+    post.tags.some((t) => slugifyTag(t) === safeSlug)
+  );
+
+  if (matchedPosts.length === 0) return null;
+
+  // Берем оригинальное написание тега из первой найденной статьи
+  const samplePost = matchedPosts.find((p) => p.tags.some((t) => slugifyTag(t) === safeSlug));
+  const tagName = samplePost?.tags.find((t) => slugifyTag(t) === safeSlug) ?? safeSlug;
+
+  return { tagName, posts: matchedPosts };
+}
+
 export function paginateItems<T>(
   items: T[],
   requestedPage: number,
@@ -387,6 +455,7 @@ export async function searchPosts(query: string): Promise<SearchResult[]> {
         post.description,
         post.author,
         post.category,
+        ...post.tags,
         post.plainText,
       ]
         .join(' ')

@@ -1,0 +1,126 @@
+---
+import { getAllTags } from "../lib/posts";
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const tags = await getAllTags();
+
+function pluralizeArticles(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${count} публикация`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+    return `${count} публикации`;
+  }
+  return `${count} публикаций`;
+}
+---
+
+<BaseLayout
+  title="Все теги"
+  description="Полный каталог тематических меток и тегов журнала The Masthead"
+>
+  <section class="tags-page">
+    <header class="page-header">
+      <span class="meta-label">Тематический указатель</span>
+      <h1>Все теги</h1>
+      <p class="page-lead">
+        Каталог ключевых тем, технологий и рубрик, по которым систематизированы материалы издания.
+      </p>
+    </header>
+
+    {tags.length === 0 ? (
+      <p class="empty-state">В издании пока нет тегов.</p>
+    ) : (
+      <div class="tags-cloud-grid">
+        {tags.map((tag) => (
+          <a href={`/tag/${tag.slug}`} class="tag-card">
+            <span class="tag-name">#{tag.name}</span>
+            <span class="meta-label tag-count">{pluralizeArticles(tag.postCount)}</span>
+          </a>
+        ))}
+      </div>
+    )}
+  </section>
+</BaseLayout>
+
+<style>
+  .tags-page {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .page-header {
+    padding-bottom: 1.75rem;
+    border-bottom: 2px solid var(--border-dark);
+    margin-bottom: 3rem;
+  }
+
+  .page-header h1 {
+    font-size: clamp(2.1rem, 5vw, 3.5rem);
+    font-weight: 500;
+    line-height: 1.1;
+    margin: 0.5rem 0 0.75rem;
+    letter-spacing: -0.02em;
+  }
+
+  .page-lead {
+    font-size: 1.15rem;
+    font-style: italic;
+    color: var(--text-secondary);
+    max-width: 640px;
+  }
+
+  .tags-cloud-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+  }
+
+  .tag-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+    text-decoration: none;
+    color: var(--text-primary);
+    transition:
+      border-color 0.2s ease,
+      background-color 0.2s ease;
+  }
+
+  .tag-card:hover {
+    border-color: var(--border-dark);
+    background-color: var(--bg-color);
+    opacity: 1;
+  }
+
+  .tag-name {
+    font-family: var(--font-serif);
+    font-size: 1.15rem;
+    font-weight: 500;
+  }
+
+  .tag-count {
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .empty-state {
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+
+  @media (max-width: 768px) {
+    .tags-cloud-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 500px) {
+    .tags-cloud-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
