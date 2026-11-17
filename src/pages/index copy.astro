@@ -1,8 +1,8 @@
 ---
-import { getAllPosts } from "../lib/posts";
-import BaseLayout from "../layouts/BaseLayout.astro";
-import ArticleCard from "../components/ArticleCard.astro";
-import Pagination from "../components/Pagination.astro";
+import { getAllPosts } from "@/lib/posts";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import ArticleCard from "@/components/ArticleCard.astro";
+import Pagination from "@/components/Pagination.astro";
 
 const url = Astro.url;
 const pageParam = url.searchParams.get("page");

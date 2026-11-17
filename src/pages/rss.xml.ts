@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { getAllPosts } from "../lib/posts";
+import { getAllPosts } from "@/lib/posts";
 
 // Экранирование спецсимволов для корректного XML
 function escapeXml(str: string): string {

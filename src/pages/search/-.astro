@@ -1,7 +1,7 @@
 ---
-import { searchPosts, paginateItems } from "../lib/posts";
-import BaseLayout from "../layouts/BaseLayout.astro";
-import Pagination from "../components/Pagination.astro";
+import { searchPosts, paginateItems } from "@/lib/posts";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import Pagination from "@/components/Pagination.astro";
 
 const query = Astro.url.searchParams.get("q") || "";
 const pageParam = Number(Astro.url.searchParams.get("page") || "1");
