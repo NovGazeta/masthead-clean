@@ -36,9 +36,7 @@ const featuredPost = currentPage === 1 && paginatedPosts.length > 0 ? paginatedP
 const regularPosts = currentPage === 1 ? paginatedPosts.slice(1) : paginatedPosts;
 ---
 
-<BaseLayout
-  title={currentPage > 1 ? `THE Журнал — Страница ${currentPage}` : "THE Журнал — Главная страница"}
->
+<BaseLayout title={currentPage > 1 ? `Статьи — Страница ${currentPage}` : "Главная страница"}>
   <section class="feed-section">
     {paginatedPosts.length === 0 ? (
       <div class="empty-state">

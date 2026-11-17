@@ -26,7 +26,7 @@ const {
 } = Astro.props;
 
 const siteName = "THE Журнал";
-const fullTitle = `${title} — ${siteName}`;
+const fullTitle = `${title} // ${siteName}`;
 const baseUrl = (Astro.site?.toString() || Astro.url.origin).replace(/\/$/, "");
 const canonicalUrl = new URL(Astro.url.pathname, baseUrl).toString();
 
