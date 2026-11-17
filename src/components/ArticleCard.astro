@@ -6,7 +6,6 @@ interface Props {
 }
 
 const { post } = Astro.props;
-console.log(post);
 const { title, description, pubDate, author, category, image } = post.data;
 
 const formattedDate = pubDate.toLocaleDateString("ru-RU", {
@@ -18,13 +17,13 @@ const formattedDate = pubDate.toLocaleDateString("ru-RU", {
 
 <article class="card">
   {image && (
-    <a href={`/posts/${post.id ?? post.slug}`} class="card-img">
+    <a href={`/posts/${post.id}`} class="card-img">
       <img src={image} alt={title} loading="lazy" />
     </a>
   )}
   <span class="category-tag">{category}</span>
   <h2>
-    <a href={`/posts/${post.id ?? post.slug}`}>{title}</a>
+    <a href={`/posts/${post.id}`}>{title}</a>
   </h2>
   <p>{description}</p>
   <div class="meta-label card-meta">

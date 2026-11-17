@@ -19,7 +19,7 @@ const formattedDate = pubDate.toLocaleDateString("ru-RU", {
   <div class="featured-content">
     <span class="category-tag">{category}</span>
     <h1>
-      <a href={`/posts/${post.slug}`}>{title}</a>
+      <a href={`/posts/${post.id}`}>{title}</a>
     </h1>
     <p class="excerpt">{description}</p>
     <div class="meta-label">
@@ -28,7 +28,7 @@ const formattedDate = pubDate.toLocaleDateString("ru-RU", {
   </div>
 
   {image && (
-    <a href={`/posts/${post.slug}`} class="featured-image">
+    <a href={`/posts/${post.id}`} class="featured-image">
       <img src={image} alt={title} />
     </a>
   )}
