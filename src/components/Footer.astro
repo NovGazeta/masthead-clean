@@ -1,27 +1,88 @@
 <footer class="site-footer">
-    <div class="container footer-inner">
-        <div>
-            <strong>THE MASTHEAD</strong>
-            <p class="meta-label" style="margin-top: 0.5rem;">
-                Сделано на чистом Astro.js без сторонних CMS-зависимостей.
-            </p>
-        </div>
-        <div class="meta-label">&copy; {new Date().getFullYear()} Все права защищены.</div>
+  <div class="container footer-inner">
+    <div>
+      <strong>THE MASTHEAD</strong>
+      <p class="meta-label" style="margin-top: 0.5rem;">
+        Сделано на чистом Astro.js без сторонних CMS-зависимостей.
+      </p>
     </div>
+
+    <div class="footer-right">
+      <a
+        href="/rss.xml"
+        class="rss-link meta-label"
+        aria-label="Подписаться на RSS-ленту"
+        title="RSS-лента издания"
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 11a9 9 0 0 1 9 9"></path>
+          <path d="M4 4a16 16 0 0 1 16 16"></path>
+          <circle cx="5" cy="19" r="1"></circle>
+        </svg>
+        <span>RSS</span>
+      </a>
+
+      <span class="meta-label">&copy; {new Date().getFullYear()} Все права защищены.</span>
+    </div>
+  </div>
 </footer>
 
 <style>
-    .site-footer {
-        margin-top: 5rem;
-        border-top: 2px solid var(--border-dark);
-        padding: 2.5rem 0 4rem;
-    }
+  .site-footer {
+    margin-top: 5rem;
+    border-top: 2px solid var(--border-dark);
+    padding: 2.5rem 0 4rem;
+  }
 
-    .footer-inner {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
-        flex-wrap: wrap;
-        gap: 1.5rem;
+  .footer-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+  }
+
+  .footer-right {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .rss-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 0.4rem 0.7rem;
+    transition:
+      border-color 0.2s ease,
+      color 0.2s ease,
+      background-color 0.2s ease;
+  }
+
+  .rss-link:hover {
+    color: var(--accent-color);
+    border-color: var(--border-dark);
+    background-color: var(--surface-color);
+    opacity: 1;
+  }
+
+  @media (max-width: 600px) {
+    .footer-right {
+      width: 100%;
+      justify-content: space-between;
     }
+  }
 </style>

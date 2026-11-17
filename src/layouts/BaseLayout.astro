@@ -18,6 +18,7 @@ const { title, description = "Редакционный журнал на Astro" 
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{title} | The Masthead</title>
     <meta name="description" content={description} />
+    <link rel="alternate" type="application/rss+xml" title="The Masthead — RSS" href="/rss.xml" />
 
     <!-- Предотвращение вспышки светлой темы при загрузке -->
     <script is:inline>
