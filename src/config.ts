@@ -1,7 +1,5 @@
 import pkg from "@/lib/pkg";
 
-console.log(process.env.NODE_ENV);
-
 export const config = {
   name: pkg.name,
   title: pkg.title,
