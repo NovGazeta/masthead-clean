@@ -15,6 +15,7 @@ node_modules/
 
 # tests
 test-results/
+playwright-report/
 
 # Package Managers
 package-lock.json
