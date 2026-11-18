@@ -27,12 +27,10 @@ else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-whil
     <header class="page-header">
       <span class="meta-label">Тематический указатель</span>
       <h1>Все теги</h1>
-      <p class="page-lead">
-        Каталог ключевых тем, технологий и рубрик, по которым систематизированы материалы издания.
-      </p>
+      <p class="page-lead">Каталог ключевых тем, по которым систематизированы материалы издания.</p>
     </header>
 
-    {tags.length === 0 ? (
+    {tags.length < 1 ? (
       <p class="empty-state">В издании пока нет тегов.</p>
     ) : (
       <div class="tags-cloud-grid">

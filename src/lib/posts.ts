@@ -257,7 +257,7 @@ async function loadPostsFromDisk(): Promise<Post[]> {
 
         let rawTags: string[] = [];
         if (Array.isArray(data.tags)) {
-          rawTags = data.tags.map((t) => String(t).trim()).filter(Boolean);
+          rawTags = data.tags.map((t) => (!!t ? String(t).trim() : null)).filter((f) => !!f);
         } else if (typeof data.tags === "string" && data.tags.trim()) {
           rawTags = data.tags
             .split(",")
@@ -398,7 +398,7 @@ export async function getPostsByTag(
   const safeSlug = path.basename(tagSlug);
   const posts = await getAllPosts();
 
-  const matchedPosts = posts.filter((post) => post.tags.some((t) => slugifyTag(t) === safeSlug));
+  const matchedPosts = posts.filter((post) => Array.isArray(post.tags) ? post.tags.some((t) => slugifyTag(t) === safeSlug) : post.tags.includes(safeSlug));
 
   if (matchedPosts.length == 0) return null;
 

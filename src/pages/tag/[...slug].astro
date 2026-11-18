@@ -7,12 +7,37 @@ import Pagination from "@/components/Pagination.astro";
 const { slug } = Astro.params;
 if (!slug) return Astro.redirect("/404");
 
-const result = await getPostsByTag(slug);
-if (!result) return Astro.redirect("/404");
+const segments = slug ? slug.split("/") : [];
+const tagSlug = segments.length > 0 ? segments[0] : undefined;
+if (!tagSlug) return Astro.redirect("/404");
 
-const { tagName, posts } = result;
-const pageParam = Number(Astro.url.searchParams.get("page") || "1");
-const paginated = paginateItems(posts, pageParam, 9);
+let currentPage = 1;
+
+if (segments.length > 1 && segments[1]) {
+  const parsedPage = parseInt(segments[1], 10);
+  if (!isNaN(parsedPage) && parsedPage > 1) {
+    currentPage = parsedPage;
+  }
+}
+
+const ARTICLES_PER_PAGE = 12;
+
+const tagPosts = await getPostsByTag(tagSlug);
+if (!tagPosts) return Astro.redirect("/404");
+
+const { tagName, posts } = tagPosts;
+if (!posts) return Astro.redirect("/404");
+
+const totalPosts = posts.length;
+const totalPages = Math.max(1, Math.ceil(totalPosts / ARTICLES_PER_PAGE));
+
+// Если запросили несуществующую страницу за пределами диапазона — 404
+if (currentPage > totalPages) {
+  return new Response(null, { status: 404 });
+}
+
+const startIndex = (currentPage - 1) * ARTICLES_PER_PAGE;
+const paginatedPosts = posts.slice(startIndex, startIndex + ARTICLES_PER_PAGE);
 
 if (!import.meta.env.DEV)
   Astro.response.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
@@ -29,22 +54,17 @@ else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-whil
       <h1>#{tagName}</h1>
       <p class="meta-label">
         Материалов по тегу: {posts.length}
-        {paginated.totalPages > 1 &&
-          ` • Страница ${paginated.currentPage} из ${paginated.totalPages}`}
+        {totalPages > 1 && ` • Страница ${currentPage} из ${totalPages}`}
       </p>
     </header>
 
     <div class="articles-grid">
-      {paginated.items.map((post) => (
+      {paginatedPosts.map((post) => (
         <ArticleCard post={post} />
       ))}
     </div>
 
-    <Pagination
-      currentPage={paginated.currentPage}
-      totalPages={paginated.totalPages}
-      baseUrl={Astro.url.pathname + Astro.url.search}
-    />
+    <Pagination currentPage={currentPage} totalPages={totalPages} basePath={`/tag/${tagSlug}`} />
   </section>
 </BaseLayout>
 

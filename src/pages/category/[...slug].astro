@@ -10,10 +10,7 @@ if (!slug) return Astro.redirect("/404");
 
 const segments = slug ? slug.split("/") : [];
 const categoryName = segments.length > 0 ? fromSlug(segments[0]) : undefined;
-
-if (!categoryName) {
-  return Astro.redirect("/404");
-}
+if (!categoryName) return Astro.redirect("/404");
 
 let currentPage = 1;
 
