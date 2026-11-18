@@ -43,9 +43,9 @@ const baseUrl = (Astro.site?.toString() || Astro.url.origin).replace(/\/$/, "");
 const postUrl = new URL(`/articles/${encodeURIComponent(post.slug)}`, baseUrl).toString();
 const isoDate = pubDate.toISOString();
 
-const telegramShareUrl = `https://t.me/share/url?url=${encodeURIComponent(postUrl)}&text=${encodeURIComponent(title)}`;
-const xShareUrl = `https://x.com/intent/tweet?url=${encodeURIComponent(postUrl)}&text=${encodeURIComponent(title)}`;
-const facebookShareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(postUrl)}`;
+const telegramShareUrl = `https://t.me/share/url?url=${postUrl}&text=${encodeURIComponent(title)}`;
+const xShareUrl = `https://x.com/intent/tweet?url=${postUrl}&text=${encodeURIComponent(title)}`;
+const facebookShareUrl = `https://www.facebook.com/sharer/sharer.php?u=${postUrl}`;
 
 const absoluteImageUrl = image
   ? image.startsWith("http://") || image.startsWith("https://")
