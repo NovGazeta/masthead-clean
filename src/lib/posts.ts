@@ -194,6 +194,7 @@ export function parseAuthors(authorsInput: any): AuthorSummary[] {
     }));
   }
 
+  // Людмила Рыбина (Обозреватель, rybinal@yandex.ru), Марина Аромштам
   const authorsObj: Record<string, AuthorSummary> = {};
   const matrix = String(authorsInput)
     .split(",")
