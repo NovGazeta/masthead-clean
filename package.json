@@ -28,7 +28,8 @@
     "format": "prettier . --write",
     "playwright": "playwright install",
     "test": "playwright test",
-    "test:ui": "playwright test --ui"
+    "test:ui": "playwright test --ui",
+    "db:migrate": "tsx scripts/migrate-to-turso.ts"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.13",
@@ -41,6 +42,7 @@
   "devDependencies": {
     "@playwright/test": "^1.65.0",
     "@types/node": "^26.6.6",
+    "dotenv": "^18.0.10",
     "prettier": "^3.9.10",
     "prettier-plugin-astro": "^1.1.2",
     "typescript": "^7.0.2"

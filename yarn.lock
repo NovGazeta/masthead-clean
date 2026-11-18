@@ -1404,6 +1404,11 @@ domutils@^3.2.2:
     domelementtype "^2.3.0"
     domhandler "^5.0.3"
 
+dotenv@^18.0.10:
+  version "18.0.10"
+  resolved "https://registry.yarnpkg.com/dotenv/-/dotenv-18.0.10.tgz#4171e67ba539a3d1513d7cbc51b8124e60714d28"
+  integrity sha512-89FAA1xchzK2mxVWdr5F/0rldwiueXs6zJM86rO66EzekR1iBdiXRthyG+m5GvkJaFH3C2LESzamTkgndmLT2A==
+
 dset@^3.1.4:
   version "3.1.4"
   resolved "https://registry.yarnpkg.com/dset/-/dset-3.1.4.tgz#f8eaf5f023f068a036d08cd07dc9ffb7d0065248"
