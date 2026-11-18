@@ -1,8 +1,10 @@
 ---
-import { getAllAuthors } from "@/lib/posts";
+import { getAllAuthors, getAllPosts } from "@/lib/posts";
+import { toSlug } from "@/lib/translit";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 
-const authors = await getAllAuthors();
+const allPosts = await getAllPosts();
+const authors = getAllAuthors(allPosts);
 
 function getInitials(name: string): string {
   return name
@@ -56,9 +58,12 @@ function pluralizeArticles(count: number): string {
 
             <div class="author-footer">
               <div class="author-topics">
-                {author.categories.map((cat) => (
-                  <span class="category-tag">{cat}</span>
-                ))}
+                {author.rubrics?.length > 0 &&
+                  author.rubrics.map((cat) => (
+                    <span class="category-tag">
+                      <a href={`/category/${toSlug(cat)}`}>{cat}</a>
+                    </span>
+                  ))}
               </div>
               <a href={`/author/${author.slug}`} class="meta-label read-author-link">
                 Все материалы &rarr;

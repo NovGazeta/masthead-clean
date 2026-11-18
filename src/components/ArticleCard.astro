@@ -6,11 +6,12 @@ interface Props {
   post: Post;
   featured?: boolean;
   hideRubric?: boolean;
+  hideAuthors?: boolean;
 }
 
-const { post, featured = false, hideRubric = false } = Astro.props;
+const { post, featured = false, hideRubric = false, hideAuthors = false } = Astro.props;
 
-const authors = parseAuthors(post?.authors || "");
+const authors = Array.isArray(post.authors) ? post.authors : parseAuthors(post.authors);
 
 const formattedDate = post.pubDate.toLocaleDateString("ru-RU", {
   day: "numeric",
@@ -27,7 +28,8 @@ const formattedDate = post.pubDate.toLocaleDateString("ru-RU", {
       </span>
     )}
     <span class="meta-label">
-      {authors?.length > 0 &&
+      {!hideAuthors &&
+        authors?.length > 0 &&
         authors.map((author) => <a href={`/author/${toSlug(author.name)}`}>{author.name}</a>)}{" "}
       &bull; {formattedDate} &bull; {post.readingTime}
     </span>

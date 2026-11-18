@@ -31,7 +31,7 @@ const {
   htmlContent,
 } = post;
 
-const authors = parseAuthors(post?.authors || "");
+const authors = Array.isArray(post.authors) ? post.authors : parseAuthors(post.authors);
 
 const formattedDate = pubDate.toLocaleDateString("ru-RU", {
   day: "numeric",

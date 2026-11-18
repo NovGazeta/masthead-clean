@@ -1,7 +1,7 @@
-import fs from "node:fs/promises";
-import { watch, existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
+import fs from "node:fs/promises";
+import { watch, existsSync, readdirSync } from "node:fs";
 import { marked } from "marked";
 import { toSlug, fromSlug } from "@/lib/translit";
 
@@ -11,35 +11,34 @@ export interface TocItem {
   level: 2 | 3;
 }
 
+export interface AuthorSummary {
+  name: string;
+  slug: string;
+  slugName?: string;
+  role?: string;
+  postCount?: number;
+  latestPostDate?: Date;
+  rubrics?: string[];
+}
+
 export interface Post {
   slug: string;
   source?: string;
   title: string;
   subtitle?: string;
   pubDate: Date;
-  authors?: string;
-  authorSlug: string;
-  authorBio?: string;
+  authors?: string | AuthorSummary[];
   rubric: string;
   genre?: string;
-  tags: string[];
-  draft: boolean;
-  featured: boolean;
+  tags?: string | string[];
+  draft?: boolean;
+  featured?: boolean;
   image?: string;
   imageCaption?: string;
-  readingTime: string;
-  toc: TocItem[];
+  readingTime?: string;
+  toc?: TocItem[];
   htmlContent: string;
   plainText: string;
-}
-
-export interface AuthorSummary {
-  name: string;
-  slug: string;
-  bio: string;
-  postCount: number;
-  latestPostDate: Date;
-  rubrics: string[];
 }
 
 export interface TagSummary {
@@ -63,7 +62,7 @@ export interface SearchResult extends Post {
 }
 
 const ARTICLES_DIR = path.resolve(process.cwd(), "src/content/articles");
-const POSTS_DIR = path.resolve(process.cwd(), "src/content/posts");
+//const POSTS_DIR = path.resolve(process.cwd(), "src/content/posts");
 
 let cachedPosts: Post[] | null = null;
 let cachedPostsMap: Map<string, Post> | null = null;
@@ -221,25 +220,24 @@ function buildHighlightedSnippet(post: Post, query: string): string {
   return safeText.replace(regex, "<mark>$1</mark>");
 }
 
-function getMarkdownFilesRecursively(dir: string): Promise<string[]> {
+function getFilesRecursively(dir: string, ext: string = ".md"): Promise<string[]> {
   const entries = readdirSync(dir, {
     recursive: true,
     withFileTypes: true,
   });
   return entries
-    .filter((entry) => entry.isFile())
+    .filter((entry) => entry.isFile() && entry.name.endsWith(ext))
     .map((entry) => path.join(entry.parentPath, entry.name));
 }
 
 async function loadPostsFromDisk(): Promise<Post[]> {
   try {
-    const mdFiles = await getMarkdownFilesRecursively(ARTICLES_DIR);
+    const mdFiles = await getFilesRecursively(ARTICLES_DIR, ".md");
 
     const rawPosts = await Promise.all(
       mdFiles.map(async (filePath) => {
         const relativePath = path.relative(ARTICLES_DIR, filePath);
         const slug = relativePath.replace(/\.md$/, "").replace(/\\/g, "/");
-
         const rawFile = await fs.readFile(filePath, "utf-8");
         const { data, content } = matter(rawFile);
 
@@ -252,8 +250,8 @@ async function loadPostsFromDisk(): Promise<Post[]> {
         const parsedHtml = await marked.parse(content);
         const { html, toc } = extractTocAndInjectIds(parsedHtml);
 
-        const authorsStr = (data.authors ?? data.author ?? "Редакция").trim();
-        const rubricStr = (data.rubric ?? data.category ?? "Общее").trim();
+        const authorsStr = (data.authors ?? data.author ?? "").trim();
+        const rubricStr = (data.rubric ?? data.category ?? "").trim();
         const dateValue = data.date ?? data.pubDate;
         const pubDate = dateValue ? new Date(dateValue) : new Date();
 
@@ -273,9 +271,7 @@ async function loadPostsFromDisk(): Promise<Post[]> {
           title: data.title ?? "Без названия",
           subtitle: data.subtitle ? String(data.subtitle) : undefined,
           pubDate,
-          authors: authorsStr,
-          authorSlug: slugifyAuthor(authorsStr),
-          authorBio: data.authorBio ? String(data.authorBio).trim() : undefined,
+          authors: parseAuthors(authorsStr),
           rubric: rubricStr,
           genre: data.genre ? String(data.genre) : undefined,
           tags: rawTags,
@@ -332,40 +328,27 @@ export async function getPostBySlug(slug: string): Promise<Post | null> {
   return cachedPostsMap?.get(safeSlug) ?? null;
 }
 
-export async function getAllAuthors(): Promise<AuthorSummary[]> {
-  const posts = await getAllPosts();
-  const map = new Map<
-    string,
-    {
-      name: string;
-      slug: string;
-      bio: string;
-      postCount: number;
-      latestPostDate: Date;
-      rubrics: Set<string>;
-    }
-  >();
+export function getAllAuthors(posts): AuthorSummary[] {
+  const map = new Map<string, AuthorSummary>();
 
   for (const post of posts) {
-    const existing = map.get(post.authorSlug);
-    if (!existing) {
-      map.set(post.authorSlug, {
-        name: post.authors,
-        slug: post.authorSlug,
-        bio: post.authorBio ?? "Постоянный автор и обозреватель издания The Журнал.",
-        postCount: 1,
-        latestPostDate: post.pubDate,
-        rubrics: new Set([post.rubric]),
-      });
-    } else {
-      existing.postCount += 1;
-      if (post.authorBio) {
-        existing.bio = post.authorBio;
+    for (const author of post.authors) {
+      const existing = map.get(author.slug);
+      if (!existing) {
+        map.set(author.slug, {
+          postCount: 1,
+          latestPostDate: post.pubDate,
+          rubrics: [post.rubric.trim()],
+          slugName: authorNameFromSlug(author.slug),
+          ...author,
+        });
+      } else {
+        existing.postCount += 1;
+        existing.rubrics.push(post.rubric.trim());
+        if (post.pubDate > existing.latestPostDate) {
+          existing.latestPostDate = post.pubDate;
+        }
       }
-      if (post.pubDate > existing.latestPostDate) {
-        existing.latestPostDate = post.pubDate;
-      }
-      existing.rubrics.add(post.rubric);
     }
   }
 
@@ -379,15 +362,13 @@ export async function getAllAuthors(): Promise<AuthorSummary[]> {
 
 export async function getAuthorBySlug(
   authorSlug: string,
-): Promise<{ author: AuthorSummary; posts: Post[] } | null> {
-  const safeSlug = path.basename(authorSlug);
-  const [authors, allPosts] = await Promise.all([getAllAuthors(), getAllPosts()]);
-  const author = authors.find((a) => a.slug === safeSlug);
-
-  if (!author) return null;
-
-  const posts = allPosts.filter((p) => p.authorSlug === safeSlug);
-  return { author, posts };
+): Promise<{ author?: AuthorSummary; posts: Post[] }> {
+  const allPosts = await getAllPosts();
+  const authors = getAllAuthors(allPosts);
+  const author = authors.find((a) => a.slug == authorSlug);
+  return {
+    author,
+    posts: authors ? allPosts.filter((p) => p.authors.find((a) => a.slug == authorSlug)) : [] };
 }
 
 export async function getAllTags(): Promise<TagSummary[]> {
@@ -418,7 +399,7 @@ export async function getPostsByTag(
 
   const matchedPosts = posts.filter((post) => post.tags.some((t) => slugifyTag(t) === safeSlug));
 
-  if (matchedPosts.length === 0) return null;
+  if (matchedPosts.length == 0) return null;
 
   const samplePost = matchedPosts.find((p) => p.tags.some((t) => slugifyTag(t) === safeSlug));
   const tagName = samplePost?.tags.find((t) => slugifyTag(t) === safeSlug) ?? safeSlug;
@@ -510,9 +491,14 @@ export function getPostWord(count: number): string {
   return pluralizeRu(count, ["статья", "статьи", "статей"]);
 }
 
-export const parseAuthors = (authors: string) => {
-  const authorsObj: Record<string, { name: string; role: string; slug: string; }> = {};
-  const matrix = authors.split(",").map((m) => m.trim().split("(").map((a) => a.replaceAll(")", "").trim()).filter((f) => !!f));
+export function parseAuthors(authors: string): { name: string; role: string; slug: string }[] {
+  const authorsObj: Record<string, { name: string; role: string; slug: string }> = {};
+  const matrix = authors.split(",").map((m) =>
+    m.trim()
+      .split("(")
+      .map((a) => a.replaceAll(")", "").trim())
+      .filter((f) => !!f),
+  );
   for (let i = 0; i < matrix.length; i++) {
     if (matrix[i].length < 1) continue;
     const [name, role] = matrix[i];

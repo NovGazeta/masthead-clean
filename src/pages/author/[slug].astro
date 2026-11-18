@@ -1,22 +1,15 @@
 ---
 import { getAuthorBySlug, paginateItems } from "@/lib/posts";
+import { toSlug } from "@/lib/translit";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import ArticleCard from "@/components/ArticleCard.astro";
 import Pagination from "@/components/Pagination.astro";
 
 const { slug } = Astro.params;
+if (!slug) return Astro.redirect("/404");
 
-if (!slug) {
-  return Astro.redirect("/404");
-}
-
-const result = await getAuthorBySlug(slug);
-
-if (!result) {
-  return Astro.redirect("/404");
-}
-
-const { author, posts } = result;
+const { author, posts } = await getAuthorBySlug(slug);
+if (!author) return Astro.redirect("/404");
 
 const pageParam = Number(Astro.url.searchParams.get("page") || "1");
 const paginated = paginateItems(posts, pageParam, 9);
@@ -64,12 +57,15 @@ if (!import.meta.env.DEV)
         <div class="dossier-info">
           <span class="meta-label">Автор издания</span>
           <h1>{author.name}</h1>
-          <p class="dossier-bio">{author.bio}</p>
+          <p class="dossier-bio">{author.role}</p>
           <div class="dossier-categories">
             <span class="meta-label">Рубрики:</span>
-            {author.categories.map((cat) => (
-              <span class="category-tag">{cat}</span>
-            ))}
+            {author.rubrics?.length > 0 &&
+              author.rubrics.map((cat) => (
+                <span class="category-tag">
+                  <a href={`/category/${toSlug(cat)}`}>{cat}</a>
+                </span>
+              ))}
           </div>
         </div>
       </div>
@@ -85,9 +81,8 @@ if (!import.meta.env.DEV)
     </div>
 
     <div class="articles-grid">
-      {paginated.items.map((post) => (
-        <ArticleCard post={post} />
-      ))}
+      {paginated?.items &&
+        paginated.items.map((post) => <ArticleCard post={post} hideAuthors={true} />)}
     </div>
 
     <Pagination
