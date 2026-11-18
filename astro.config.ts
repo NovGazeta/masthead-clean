@@ -10,9 +10,9 @@ export default defineConfig({
   //adapter: node({ mode: 'standalone' }),
   adapter: vercel({
     // Оптимизация под Serverless-функции Vercel
-    isr: {
+    //isr: {
       // Кэширование страниц на уровне Edge по желанию
       // clearCacheOnDeploy: 'always',
-    },
+    //},
   }),
 });

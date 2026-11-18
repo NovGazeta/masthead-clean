@@ -337,14 +337,14 @@ export function getAllAuthors(posts): AuthorSummary[] {
       if (!existing) {
         map.set(author.slug, {
           postCount: 1,
+          rubrics: new Set([post.rubric.trim()]),
           latestPostDate: post.pubDate,
-          rubrics: [post.rubric.trim()],
           slugName: authorNameFromSlug(author.slug),
           ...author,
         });
       } else {
         existing.postCount += 1;
-        existing.rubrics.push(post.rubric.trim());
+        existing.rubrics.add(post.rubric.trim());
         if (post.pubDate > existing.latestPostDate) {
           existing.latestPostDate = post.pubDate;
         }
