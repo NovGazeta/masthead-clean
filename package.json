@@ -26,7 +26,8 @@
     "astro": "astro",
     "format": "prettier . --write",
     "playwright": "playwright install",
-    "test": "playwright test"
+    "test": "playwright test",
+    "test:ui": "playwright test --ui"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.13",

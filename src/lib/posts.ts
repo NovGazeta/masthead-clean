@@ -398,7 +398,11 @@ export async function getPostsByTag(
   const safeSlug = path.basename(tagSlug);
   const posts = await getAllPosts();
 
-  const matchedPosts = posts.filter((post) => Array.isArray(post.tags) ? post.tags.some((t) => slugifyTag(t) === safeSlug) : post.tags.includes(safeSlug));
+  const matchedPosts = posts.filter((post) =>
+    Array.isArray(post.tags)
+      ? post.tags.some((t) => slugifyTag(t) === safeSlug)
+      : post.tags.includes(safeSlug),
+  );
 
   if (matchedPosts.length == 0) return null;
 
