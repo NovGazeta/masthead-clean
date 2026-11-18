@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
-import { getAllPosts } from "@/lib/posts";
+import { getAllPosts, getAllRubrics } from "@/lib/posts";
+import { toSlug } from "@/lib/translit";
 
 function escapeXml(str: string): string {
   return str
@@ -10,7 +11,7 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
-const CATEGORIES = ["culture", "technology", "essays", "design"];
+const categories = await getAllRubrics();
 
 export const GET: APIRoute = async ({ site, url }) => {
   const posts = await getAllPosts();
@@ -62,8 +63,8 @@ export const GET: APIRoute = async ({ site, url }) => {
   ];
 
   // Страницы рубрик
-  const categoryUrls = CATEGORIES.map((slug) => ({
-    loc: `${baseUrl}/category/${slug}`,
+  const categoryUrls = categories.map((name) => ({
+    loc: `${baseUrl}/category/${toSlug(name)}`,
     lastmod: latestPostDate,
     changefreq: "weekly",
     priority: "0.8",
