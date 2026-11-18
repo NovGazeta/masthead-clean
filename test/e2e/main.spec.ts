@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import pkg from "../../src/lib/pkg";
 
-test.describe("The Masthead E2E Tests", () => {
+test.describe("The E2E Tests", () => {
   test("Главная страница открывается и содержит логотип", async ({ page }) => {
     await page.goto("/");
 
