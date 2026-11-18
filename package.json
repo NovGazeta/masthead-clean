@@ -1,6 +1,7 @@
 {
   "name": "masthead-clean",
   "title": "THE Журнал",
+  "description": "Astro.js Newspaper Starter",
   "type": "module",
   "version": "0.0.1",
   "private": false,
