@@ -22,7 +22,8 @@ async function migrate() {
     const filePath = path.join(articlesDir, file);
     const fileContent = fs.readFileSync(filePath, "utf-8");
 
-    const { data, content } = matter(fileContent);
+    let { data, content } = matter(fileContent);
+    content = content.replaceAll("[](_assets/", "[](/_assets/");
     const plainText = stripMarkdown(content);
     const htmlContent = await marked.parse(content);
     const slug = data.slug || path.basename(file, path.extname(file));
