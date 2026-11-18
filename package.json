@@ -46,8 +46,8 @@
     "node": ">=24.22.1"
   },
   "keywords": [
-    "astro",
+    "astrojs",
     "typescript",
-    "md"
+    "markdown"
   ]
 }
