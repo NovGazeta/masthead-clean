@@ -1,6 +1,6 @@
 import { test, type Page } from "@playwright/test";
 
-console.log("DEV:", import.meta.env.DEV);
+if (import.meta.env.DEV) console.log("DEV:", import.meta.env.DEV);
 
 const { PUBLIC_APP_URL } = process.env;
 process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
