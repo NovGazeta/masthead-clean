@@ -1,18 +1,18 @@
-import type { APIRoute } from 'astro';
-import { turso } from "../src/lib/turso";
+import type { APIRoute } from "astro";
+import { turso } from "@/lib/turso";
 
 export const GET: APIRoute = async ({ url }) => {
-  const query = url.searchParams.get('q');
+  const query = url.searchParams.get("q");
 
-  if (!query || query.trim() === '') {
-    return new Response(JSON.stringify({ error: 'Поисковый запрос не задан' }), {
+  if (!query || query.trim() === "") {
+    return new Response(JSON.stringify({ error: "Поисковый запрос не задан" }), {
       status: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { "Content-Type": "application/json" },
     });
   }
 
   // Очищаем и подготавливаем поисковый запрос для FTS5 (убираем спецсимволы)
-  const sanitizedQuery = query.trim().replace(/['"()*+-]/g, ' ');
+  const sanitizedQuery = query.trim().replace(/['"()*+-]/g, " ");
 
   try {
     // Выполняем полнотекстовый поиск по FTS5 таблице с сортировкой по релевантности (rank)
@@ -40,15 +40,15 @@ export const GET: APIRoute = async ({ url }) => {
     return new Response(JSON.stringify({ query: sanitizedQuery, results: posts }), {
       status: 200,
       headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=60, stale-while-revalidate=300', // Кэшируем на Edge
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=60, stale-while-revalidate=300", // Кэшируем на Edge
       },
     });
   } catch (err) {
-    console.error('[Search API Error]:', err);
-    return new Response(JSON.stringify({ error: 'Ошибка сервера при выполнении поиска' }), {
+    console.error("[Search API Error]:", err);
+    return new Response(JSON.stringify({ error: "Ошибка сервера при выполнении поиска" }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { "Content-Type": "application/json" },
     });
   }
 };

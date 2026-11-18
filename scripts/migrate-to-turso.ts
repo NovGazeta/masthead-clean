@@ -1,15 +1,15 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import matter from 'gray-matter';
-import { createClient } from '@libsql/client';
-import 'dotenv/config';
+import fs from "node:fs";
+import path from "node:path";
+import matter from "gray-matter";
+import { createClient } from "@libsql/client";
+import "dotenv/config";
 
 const turso = createClient({
-  url: process.env.TURSO_DATABASE_URL || '',
-  authToken: process.env.TURSO_AUTH_TOKEN || '',
+  url: process.env.TURSO_DATABASE_URL || "",
+  authToken: process.env.TURSO_AUTH_TOKEN || "",
 });
 
-const articlesDir = path.resolve('src/content/articles');
+const articlesDir = path.resolve("src/content/articles");
 
 // Вспомогательная функция для создания слага из строки
 function slugify(text: string): string {
@@ -17,9 +17,9 @@ function slugify(text: string): string {
     .toString()
     .toLowerCase()
     .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^\w\-]+/g, '')
-    .replace(/\-\-+/g, '-');
+    .replace(/\s+/g, "-")
+    .replace(/[^\w\-]+/g, "")
+    .replace(/\-\-+/g, "-");
 }
 
 async function migrate() {
@@ -29,13 +29,13 @@ async function migrate() {
   }
 
   const files = fs.readdirSync(articlesDir, { recursive: true }) as string[];
-  const mdFiles = files.filter(f => f.endsWith('.md') || f.endsWith('.mdx'));
+  const mdFiles = files.filter((f) => f.endsWith(".md") || f.endsWith(".mdx"));
 
   console.log(`📦 Найдено Markdown-файлов для миграции: ${mdFiles.length}`);
 
   for (const file of mdFiles) {
     const filePath = path.join(articlesDir, file);
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    const fileContent = fs.readFileSync(filePath, "utf-8");
 
     const { data, content } = matter(fileContent);
     const slug = data.slug || path.basename(file, path.extname(file));
@@ -74,7 +74,7 @@ async function migrate() {
         `,
         args: [
           slug,
-          data.title || 'Без названия',
+          data.title || "Без названия",
           data.subtitle || null,
           data.description || null,
           data.pubDate ? new Date(data.pubDate).toISOString() : new Date().toISOString(),
@@ -95,7 +95,11 @@ async function migrate() {
 
       if (postId) {
         // 3. Обработка авторов (связь M:N)
-        const authors: string[] = Array.isArray(data.authors) ? data.authors : (data.author ? [data.author] : []);
+        const authors: string[] = Array.isArray(data.authors)
+          ? data.authors
+          : data.author
+            ? [data.author]
+            : [];
         for (const authorName of authors) {
           const authorSlug = slugify(authorName);
           await turso.execute({
@@ -147,14 +151,14 @@ async function migrate() {
 
   // Обновление поискового индекса FTS5
   try {
-    console.log('🔄 Переиндексация FTS5...');
+    console.log("🔄 Переиндексация FTS5...");
     await turso.execute("INSERT INTO posts_fts(posts_fts) VALUES('rebuild');");
-    console.log('✨ Поисковый индекс успешно обновлен!');
+    console.log("✨ Поисковый индекс успешно обновлен!");
   } catch (err) {
-    console.error('[Предупреждение] Ошибка переиндексации FTS5:', err);
+    console.error("[Предупреждение] Ошибка переиндексации FTS5:", err);
   }
 
-  console.log('🎉 Полная реляционная миграция в Turso завершена!');
+  console.log("🎉 Полная реляционная миграция в Turso завершена!");
 }
 
 migrate();
