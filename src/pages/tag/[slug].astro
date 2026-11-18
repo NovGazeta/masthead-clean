@@ -1,27 +1,14 @@
 ---
-import { getAllTags, getPostsByTag, paginateItems } from "@/lib/posts";
+import { getPostsByTag, paginateItems } from "@/lib/posts";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import ArticleCard from "@/components/ArticleCard.astro";
 import Pagination from "@/components/Pagination.astro";
 
-export async function getStaticPaths() {
-  const tags = await getAllTags();
-  return tags.map((tag) => ({
-    params: { slug: tag.slug },
-  }));
-}
-
 const { slug } = Astro.params;
-
-if (!slug) {
-  return Astro.redirect("/404");
-}
+if (!slug) return Astro.redirect("/404");
 
 const result = await getPostsByTag(slug);
-
-if (!result) {
-  return Astro.redirect("/404");
-}
+if (!result) return Astro.redirect("/404");
 
 const { tagName, posts } = result;
 const pageParam = Number(Astro.url.searchParams.get("page") || "1");
