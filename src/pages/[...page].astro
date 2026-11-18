@@ -40,6 +40,7 @@ if (!import.meta.env.DEV)
     "Cache-Control",
     "public, s-maxage=3600, stale-while-revalidate=86400",
   );
+else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-while-revalidate=1");
 ---
 
 <BaseLayout title={currentPage > 1 ? `Статьи — Страница ${currentPage}` : "Главная страница"}>

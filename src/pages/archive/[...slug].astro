@@ -104,6 +104,7 @@ if (!import.meta.env.DEV)
     "Cache-Control",
     "public, s-maxage=86400, stale-while-revalidate=604800",
   );
+else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-while-revalidate=1");
 ---
 
 <BaseLayout
