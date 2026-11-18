@@ -1,26 +1,11 @@
-import fs from "node:fs";
-import path from "node:path";
-import matter from "gray-matter";
-import { createClient } from "@libsql/client";
-import "dotenv/config";
+import fs from 'node:fs';
+import path from 'node:path';
+import matter from 'gray-matter';
+import { marked } from 'marked';
+import { turso } from '@/lib/turso';
+import { calculateReadingTime, slugify, stripMarkdown } from '@/lib/posts';
 
-const turso = createClient({
-  url: process.env.TURSO_DATABASE_URL || "",
-  authToken: process.env.TURSO_AUTH_TOKEN || "",
-});
-
-const articlesDir = path.resolve("src/content/articles");
-
-// Вспомогательная функция для создания слага из строки
-function slugify(text: string): string {
-  return text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^\w\-]+/g, "")
-    .replace(/\-\-+/g, "-");
-}
+const articlesDir = path.resolve('src/content/articles');
 
 async function migrate() {
   if (!fs.existsSync(articlesDir)) {
@@ -29,19 +14,21 @@ async function migrate() {
   }
 
   const files = fs.readdirSync(articlesDir, { recursive: true }) as string[];
-  const mdFiles = files.filter((f) => f.endsWith(".md") || f.endsWith(".mdx"));
+  const mdFiles = files.filter(f => f.endsWith('.md') || f.endsWith('.mdx'));
 
   console.log(`📦 Найдено Markdown-файлов для миграции: ${mdFiles.length}`);
 
   for (const file of mdFiles) {
     const filePath = path.join(articlesDir, file);
-    const fileContent = fs.readFileSync(filePath, "utf-8");
+    const fileContent = fs.readFileSync(filePath, 'utf-8');
 
     const { data, content } = matter(fileContent);
+    const plainText = stripMarkdown(content);
+    const htmlContent = await marked.parse(content);
     const slug = data.slug || path.basename(file, path.extname(file));
 
     try {
-      // 1. Обработка рубрики (связь 1:M)
+      // 1. Рубрика (1:M)
       let rubricId = null;
       if (data.rubric) {
         const rubricSlug = slugify(data.rubric);
@@ -56,33 +43,51 @@ async function migrate() {
         rubricId = rubricRes.rows[0]?.id || null;
       }
 
-      // 2. Сохранение статьи в таблицу posts
+      // Подготовка даты публикации
+      const pubDateValue = data.date
+        ? new Date(data.date).toISOString()
+        : new Date().toISOString();
+
+      // 2. Вставка поста в таблицу posts
       await turso.execute({
         sql: `
-          INSERT INTO posts (slug, title, subtitle, description, pub_date, rubric_id, genre, draft, content, reading_time)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO posts (
+            slug, title, subtitle, source, genre, authors, tags,
+            reading_time, content, htmlContent, rubric_id, featured, draft, date, pub_date
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(slug) DO UPDATE SET
             title = excluded.title,
             subtitle = excluded.subtitle,
-            description = excluded.description,
-            pub_date = excluded.pub_date,
-            rubric_id = excluded.rubric_id,
+            source = excluded.source,
             genre = excluded.genre,
-            draft = excluded.draft,
+            authors = excluded.authors,
+            tags = excluded.tags,
+            reading_time = excluded.reading_time,
             content = excluded.content,
-            reading_time = excluded.reading_time;
+            htmlContent = excluded.htmlContent,
+            rubric_id = excluded.rubric_id,
+            featured = excluded.featured,
+            draft = excluded.draft,
+            date = excluded.date,
+            pub_date = excluded.pub_date;
         `,
         args: [
           slug,
-          data.title || "Без названия",
+          data.title || 'Без названия',
           data.subtitle || null,
-          data.description || null,
-          data.pubDate ? new Date(data.pubDate).toISOString() : new Date().toISOString(),
-          rubricId,
+          data.source || null,
           data.genre || null,
-          data.draft ? 1 : 0,
+          Array.isArray(data.authors) ? data.authors.join(', ') : (data.authors || null),
+          Array.isArray(data.tags) ? data.tags.join(', ') : (data.tags || null),
+          calculateReadingTime(plainText) || null,
           content.trim(),
-          data.readingTime || null,
+          htmlContent || null,
+          rubricId,
+          !!data.featured ? 1 : 0,
+          !!data.draft ? 1 : 0,
+          data.date || pubDateValue,
+          pubDateValue,
         ],
       });
 
@@ -94,17 +99,16 @@ async function migrate() {
       const postId = postRes.rows[0]?.id;
 
       if (postId) {
-        // 3. Обработка авторов (связь M:N)
-        const authors: string[] = Array.isArray(data.authors)
+        // 3. Авторы (M:N) и их связь с рубриками
+        const authorsList = Array.isArray(data.authors)
           ? data.authors
-          : data.author
-            ? [data.author]
-            : [];
-        for (const authorName of authors) {
+          : (typeof data.authors === 'string' ? [data.authors] : (data.author ? [data.author] : []));
+
+        for (const authorName of authorsList) {
           const authorSlug = slugify(authorName);
           await turso.execute({
-            sql: `INSERT INTO authors (slug, name) VALUES (?, ?) ON CONFLICT(slug) DO UPDATE SET name = excluded.name;`,
-            args: [authorSlug, authorName],
+            sql: `INSERT INTO authors (slug, name, role) VALUES (?, ?, ?) ON CONFLICT(slug) DO UPDATE SET name = excluded.name;`,
+            args: [authorSlug, authorName, data.authorRole || null],
           });
           const authorRes = await turso.execute({
             sql: `SELECT id FROM authors WHERE slug = ?;`,
@@ -117,12 +121,19 @@ async function migrate() {
               sql: `INSERT OR IGNORE INTO posts_authors (post_id, author_id) VALUES (?, ?);`,
               args: [postId, authorId],
             });
+
+            if (rubricId) {
+              await turso.execute({
+                sql: `INSERT OR IGNORE INTO authors_rubrics (author_id, rubric_id) VALUES (?, ?);`,
+                args: [authorId, rubricId],
+              });
+            }
           }
         }
 
-        // 4. Обработка тегов (связь M:N)
-        const tags: string[] = Array.isArray(data.tags) ? data.tags : [];
-        for (const tagName of tags) {
+        // 4. Теги (M:N)
+        const tagsList: string[] = Array.isArray(data.tags) ? data.tags : [];
+        for (const tagName of tagsList) {
           const tagSlug = slugify(tagName);
           await turso.execute({
             sql: `INSERT INTO tags (slug, name) VALUES (?, ?) ON CONFLICT(slug) DO UPDATE SET name = excluded.name;`,
@@ -143,22 +154,22 @@ async function migrate() {
         }
       }
 
-      console.log(`[Успешно] Мигрирована статья со связями: ${slug}`);
+      console.log(`[Успешно] Мигрирована статья: ${slug}`);
     } catch (err) {
       console.error(`[Ошибка] Не удалось мигрировать статью ${slug}:`, err);
     }
   }
 
-  // Обновление поискового индекса FTS5
+  // Переиндексация FTS5
   try {
-    console.log("🔄 Переиндексация FTS5...");
+    console.log('🔄 Переиндексация FTS5...');
     await turso.execute("INSERT INTO posts_fts(posts_fts) VALUES('rebuild');");
-    console.log("✨ Поисковый индекс успешно обновлен!");
+    console.log('✨ Поисковый индекс FTS5 успешно обновлен!');
   } catch (err) {
-    console.error("[Предупреждение] Ошибка переиндексации FTS5:", err);
+    console.error('[Предупреждение] Ошибка переиндексации FTS5:', err);
   }
 
-  console.log("🎉 Полная реляционная миграция в Turso завершена!");
+  console.log('🎉 Миграция под новую схему завершена!');
 }
 
 migrate();

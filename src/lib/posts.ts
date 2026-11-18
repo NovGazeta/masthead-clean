@@ -100,6 +100,11 @@ function ensureWatcher(): void {
   }
 }
 
+// Вспомогательная функция для создания слага из строки
+export function slugify(text: string): string {
+  return toSlug(text);
+}
+
 export function slugifyTag(tag: string): string {
   return toSlug(tag);
 }
