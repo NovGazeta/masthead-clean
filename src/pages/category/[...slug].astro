@@ -6,8 +6,9 @@ import ArticleCard from "@/components/ArticleCard.astro";
 import Pagination from "@/components/Pagination.astro";
 
 const { slug } = Astro.params;
-const segments = slug ? slug.split("/") : [];
+if (!slug) return Astro.redirect("/404");
 
+const segments = slug ? slug.split("/") : [];
 const categoryName = segments.length > 0 ? fromSlug(segments[0]) : undefined;
 
 if (!categoryName) {

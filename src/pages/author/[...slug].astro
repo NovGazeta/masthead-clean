@@ -8,11 +8,34 @@ import Pagination from "@/components/Pagination.astro";
 const { slug } = Astro.params;
 if (!slug) return Astro.redirect("/404");
 
-const { author, posts } = await getAuthorBySlug(slug);
+const segments = slug ? slug.split("/") : [];
+const authorSlug = segments.length > 0 ? segments[0] : undefined;
+if (!authorSlug) return Astro.redirect("/404");
+
+const { author, posts } = await getAuthorBySlug(authorSlug);
 if (!author) return Astro.redirect("/404");
 
-const pageParam = Number(Astro.url.searchParams.get("page") || "1");
-const paginated = paginateItems(posts, pageParam, 9);
+let currentPage = 1;
+
+if (segments.length > 1 && segments[1]) {
+  const parsedPage = parseInt(segments[1], 10);
+  if (!isNaN(parsedPage) && parsedPage > 1) {
+    currentPage = parsedPage;
+  }
+}
+
+const ARTICLES_PER_PAGE = 12;
+
+const totalPosts = posts.length;
+const totalPages = Math.max(1, Math.ceil(totalPosts / ARTICLES_PER_PAGE));
+
+// Если запросили несуществующую страницу за пределами диапазона — 404
+if (currentPage > totalPages) {
+  return new Response(null, { status: 404 });
+}
+
+const startIndex = (currentPage - 1) * ARTICLES_PER_PAGE;
+const paginatedPosts = posts.slice(startIndex, startIndex + ARTICLES_PER_PAGE);
 
 function getInitials(name: string): string {
   return name
@@ -73,22 +96,19 @@ if (!import.meta.env.DEV)
 
     <div class="section-bar">
       <span class="meta-label">
-        Публикации автора{" "}
-        {paginated.totalPages > 1
-          ? `(страница ${paginated.currentPage} из ${paginated.totalPages})`
-          : ""}
+        Публикации автора {totalPages > 1 ? `(страница ${currentPage} из ${totalPages})` : ""}
       </span>
     </div>
 
     <div class="articles-grid">
-      {paginated?.items &&
-        paginated.items.map((post) => <ArticleCard post={post} hideAuthors={true} />)}
+      {paginatedPosts?.length > 0 &&
+        paginatedPosts.map((post) => <ArticleCard post={post} hideAuthors={true} />)}
     </div>
 
     <Pagination
-      currentPage={paginated.currentPage}
-      totalPages={paginated.totalPages}
-      baseUrl={Astro.url.pathname + Astro.url.search}
+      currentPage={currentPage}
+      totalPages={totalPages}
+      basePath={`/author/${authorSlug}`}
     />
   </section>
 </BaseLayout>
