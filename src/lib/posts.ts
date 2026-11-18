@@ -121,14 +121,14 @@ export function authorNameFromSlug(slug: string): string {
     .join("");
 }
 
-function stripMarkdown(md: string): string {
+export function stripMarkdown(md: string): string {
   return md
     .replace(/[#>*_`~\[\]()!-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function calculateReadingTime(plainText: string, customReadingTime?: string): string {
+export function calculateReadingTime(plainText: string, customReadingTime?: string): string {
   if (customReadingTime && customReadingTime.trim()) {
     return customReadingTime.trim();
   }

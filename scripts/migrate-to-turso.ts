@@ -1,11 +1,11 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import matter from 'gray-matter';
-import { marked } from 'marked';
-import { turso } from '@/lib/turso';
-import { calculateReadingTime, slugify, stripMarkdown } from '@/lib/posts';
+import fs from "node:fs";
+import path from "node:path";
+import matter from "gray-matter";
+import { marked } from "marked";
+import { turso } from "../src/lib/turso";
+import { calculateReadingTime, parseAuthors, slugify, stripMarkdown } from "../src/lib/posts";
 
-const articlesDir = path.resolve('src/content/articles');
+const articlesDir = path.resolve("src/content/articles");
 
 async function migrate() {
   if (!fs.existsSync(articlesDir)) {
@@ -14,13 +14,13 @@ async function migrate() {
   }
 
   const files = fs.readdirSync(articlesDir, { recursive: true }) as string[];
-  const mdFiles = files.filter(f => f.endsWith('.md') || f.endsWith('.mdx'));
+  const mdFiles = files.filter((f) => f.endsWith(".md") || f.endsWith(".mdx"));
 
   console.log(`📦 Найдено Markdown-файлов для миграции: ${mdFiles.length}`);
 
   for (const file of mdFiles) {
     const filePath = path.join(articlesDir, file);
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    const fileContent = fs.readFileSync(filePath, "utf-8");
 
     const { data, content } = matter(fileContent);
     const plainText = stripMarkdown(content);
@@ -44,9 +44,7 @@ async function migrate() {
       }
 
       // Подготовка даты публикации
-      const pubDateValue = data.date
-        ? new Date(data.date).toISOString()
-        : new Date().toISOString();
+      const pubDateValue = data.date ? new Date(data.date).toISOString() : new Date().toISOString();
 
       // 2. Вставка поста в таблицу posts
       await turso.execute({
@@ -74,12 +72,12 @@ async function migrate() {
         `,
         args: [
           slug,
-          data.title || 'Без названия',
+          data.title || "Без названия",
           data.subtitle || null,
           data.source || null,
           data.genre || null,
-          Array.isArray(data.authors) ? data.authors.join(', ') : (data.authors || null),
-          Array.isArray(data.tags) ? data.tags.join(', ') : (data.tags || null),
+          Array.isArray(data.authors) ? data.authors.join(", ") : data.authors || null,
+          Array.isArray(data.tags) ? data.tags.join(", ") : data.tags || null,
           calculateReadingTime(plainText) || null,
           content.trim(),
           htmlContent || null,
@@ -101,18 +99,17 @@ async function migrate() {
       if (postId) {
         // 3. Авторы (M:N) и их связь с рубриками
         const authorsList = Array.isArray(data.authors)
-          ? data.authors
-          : (typeof data.authors === 'string' ? [data.authors] : (data.author ? [data.author] : []));
+          ? parseAuthors(data.authors.join(","))
+          : parseAuthors(data.authors);
 
-        for (const authorName of authorsList) {
-          const authorSlug = slugify(authorName);
+        for (const author of authorsList) {
           await turso.execute({
             sql: `INSERT INTO authors (slug, name, role) VALUES (?, ?, ?) ON CONFLICT(slug) DO UPDATE SET name = excluded.name;`,
-            args: [authorSlug, authorName, data.authorRole || null],
+            args: [author.slug, author.name, author.role || null],
           });
           const authorRes = await turso.execute({
             sql: `SELECT id FROM authors WHERE slug = ?;`,
-            args: [authorSlug],
+            args: [author.slug],
           });
           const authorId = authorRes.rows[0]?.id;
 
@@ -162,14 +159,14 @@ async function migrate() {
 
   // Переиндексация FTS5
   try {
-    console.log('🔄 Переиндексация FTS5...');
+    console.log("🔄 Переиндексация FTS5...");
     await turso.execute("INSERT INTO posts_fts(posts_fts) VALUES('rebuild');");
-    console.log('✨ Поисковый индекс FTS5 успешно обновлен!');
+    console.log("✨ Поисковый индекс FTS5 успешно обновлен!");
   } catch (err) {
-    console.error('[Предупреждение] Ошибка переиндексации FTS5:', err);
+    console.error("[Предупреждение] Ошибка переиндексации FTS5:", err);
   }
 
-  console.log('🎉 Миграция под новую схему завершена!');
+  console.log("🎉 Миграция под новую схему завершена!");
 }
 
 migrate();
