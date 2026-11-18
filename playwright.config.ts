@@ -19,7 +19,7 @@ export default defineConfig({
   ],
   // Автоматический запуск локального сервера Astro перед тестами
   webServer: {
-    command: "npm run preview",
+    command: "astro dev --host --mode development --port 4321",
     url: "http://localhost:4321",
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,

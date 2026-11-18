@@ -1,0 +1,47 @@
+name: Build & Deploy GH Pages
+
+on:
+  workflow_call:
+    outputs:
+      status:
+        value: ${{ jobs.deploy.outputs.status }}
+
+jobs:
+  build-pages:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    outputs:
+      status: ${{ job.status }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.22.1"
+          cache: "yarn"
+
+      - name: Build static
+        env:
+          PUBLIC_APP_NAME: ${{ vars.PUBLIC_APP_NAME }}
+          PUBLIC_APP_DOMAIN: ${{ vars.PUBLIC_APP_DOMAIN }}
+          PUBLIC_APP_URL: ${{ vars.PUBLIC_APP_URL }}
+
+        run: |
+          yarn
+          yarn build
+
+      - name: Deploy to Vercel
+        uses: vercel/action@v35
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: "--prod"
+          github-comment: false

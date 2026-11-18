@@ -1,7 +1,6 @@
 import { defineMiddleware } from "astro:middleware";
 
 const mapPath: string = "/installHook.js.map";
-const notfoundPath: string = "/404";
 
 export const onRequest = defineMiddleware(async (context, next) => {
   try {
@@ -17,7 +16,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return response;
   } catch (e) {
     // Handle error and optionally return 404
-    //return context.rewrite(notfoundPath);
+    //return context.rewrite("/404");
     if (import.meta.env.DEV) console.log(e);
     return context.response;
   }

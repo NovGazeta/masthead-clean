@@ -1,13 +1,14 @@
 import { test, expect } from "@playwright/test";
+import pkg from "../../src/lib/pkg";
 
 test.describe("The Masthead E2E Tests", () => {
   test("Главная страница открывается и содержит логотип", async ({ page }) => {
     await page.goto("/");
 
     // Проверяем заголовок/логотип издания
-    const logo = page.locator(".site-logo");
+    const logo = page.locator(".logo");
     await expect(logo).toBeVisible();
-    await expect(logo).toHaveText("THE Журнал");
+    await expect(logo).toHaveText(pkg.title);
   });
 
   test("Переключатель темы меняет атрибут data-theme и сохраняет в localStorage", async ({
