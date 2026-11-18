@@ -18,7 +18,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   } catch (e) {
     // Handle error and optionally return 404
     //return context.rewrite(notfoundPath);
-    //console.log(e);
+    if (import.meta.env.DEV) console.log(e);
     return context.response;
   }
 });
