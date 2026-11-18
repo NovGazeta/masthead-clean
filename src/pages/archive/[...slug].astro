@@ -102,7 +102,7 @@ const getArchiveBasePath = (year: number) => `/archive/${year}`;
 if (!import.meta.env.DEV)
   Astro.response.headers.set(
     "Cache-Control",
-    "public, s-maxage=86400, stale-while-revalidate=604800",
+    "public, s-maxage=3600, stale-while-revalidate=86400",
   );
 else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-while-revalidate=1");
 ---

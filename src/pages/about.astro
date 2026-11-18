@@ -1,5 +1,12 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
+
+if (!import.meta.env.DEV)
+  Astro.response.headers.set(
+    "Cache-Control",
+    "public, s-maxage=86400, stale-while-revalidate=604800",
+  );
+else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-while-revalidate=1");
 ---
 
 <BaseLayout title="О проекте" description="Информация об издании The Журнал">
