@@ -368,7 +368,8 @@ export async function getAuthorBySlug(
   const author = authors.find((a) => a.slug == authorSlug);
   return {
     author,
-    posts: authors ? allPosts.filter((p) => p.authors.find((a) => a.slug == authorSlug)) : [] };
+    posts: authors ? allPosts.filter((p) => p.authors.find((a) => a.slug == authorSlug)) : [],
+  };
 }
 
 export async function getAllTags(): Promise<TagSummary[]> {
@@ -494,7 +495,8 @@ export function getPostWord(count: number): string {
 export function parseAuthors(authors: string): { name: string; role: string; slug: string }[] {
   const authorsObj: Record<string, { name: string; role: string; slug: string }> = {};
   const matrix = authors.split(",").map((m) =>
-    m.trim()
+    m
+      .trim()
       .split("(")
       .map((a) => a.replaceAll(")", "").trim())
       .filter((f) => !!f),
@@ -510,4 +512,4 @@ export function parseAuthors(authors: string): { name: string; role: string; slu
     };
   }
   return Object.values(authorsObj);
-};
+}
