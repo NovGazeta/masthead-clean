@@ -8,10 +8,20 @@ import { calculateReadingTime, parseAuthors, slugify, stripMarkdown } from "../s
 
 const articlesDir = path.resolve(".data/articles"); // src/content/articles
 
+const args = process.argv.slice(2);
+const updateExisting = args.includes("--update") || args.includes("--force");
+const forceAll = args.includes("--force-all");
+
 interface ExtractedImage {
   url: string;
   alt: string | null;
   position: number;
+}
+
+interface ExistingPostRecord {
+  id: number;
+  contentLength: number;
+  htmlLength: number;
 }
 
 function extractImagesFromMarkdown(markdown: string): ExtractedImage[] {
@@ -67,6 +77,31 @@ async function ensureImagesTable(): Promise<void> {
   `);
 }
 
+async function loadExistingPosts(): Promise> {
+  const map = new Map<string, ExistingPostRecord>();
+
+  const res = await turso.execute(`
+    SELECT
+      id,
+      slug,
+      COALESCE(LENGTH(content), 0) AS md_len,
+      COALESCE(LENGTH(htmlContent), 0) AS html_len
+    FROM posts;
+  `);
+
+  for (const row of res.rows as any[]) {
+    const slug = String(row.slug || "").trim();
+    if (!slug) continue;
+    map.set(slug, {
+      id: Number(row.id),
+      contentLength: Number(row.md_len ?? 0),
+      htmlLength: Number(row.html_len ?? 0),
+    });
+  }
+
+  return map;
+}
+
 async function migrate() {
   if (!fs.existsSync(articlesDir)) {
     console.error(`❌ Ошибка: Директория с контентом не найдена: ${articlesDir}`);
@@ -80,19 +115,43 @@ async function migrate() {
 
   console.log(`📦 Найдено Markdown-файлов для миграции: ${mdFiles.length}`);
 
+  const existingPosts = await loadExistingPosts();
+  console.log(`⚡ В Turso уже существует постов: ${existingPosts.size}`);
+
+  let insertedOrUpdated = 0;
+  let skipped = 0;
+  let hadChanges = false;
+
   for (const file of mdFiles) {
     const filePath = path.join(articlesDir, file);
     const fileContent = fs.readFileSync(filePath, "utf-8");
 
-    let { data, content } = matter(fileContent);
-    content = content.replaceAll("[](_assets/", "[](/_assets/");
-    const extractedImages = extractImagesFromMarkdown(content);
+    const parsed = matter(fileContent);
+    const data = parsed.data;
+    const rawMarkdown = parsed.content.replaceAll("[](_assets/", "[](/_assets/");
+    const trimmedMarkdown = rawMarkdown.trim();
+    const slug = String(data.slug || path.basename(file, path.extname(file))).trim();
 
-    const plainText = stripMarkdown(content);
-    const htmlContent = await marked.parse(content);
-    const slug = data.slug || path.basename(file, path.extname(file));
+    const existing = existingPosts.get(slug);
+
+    // Быстрая проверка до marked.parse() / extractImagesFromMarkdown() / SQL-записи
+    if (existing && !updateExisting && !forceAll) {
+      skipped++;
+      continue;
+    }
+
+    if (existing && updateExisting && !forceAll) {
+      if (existing.contentLength === trimmedMarkdown.length && existing.htmlLength > 0) {
+        skipped++;
+        continue;
+      }
+    }
 
     try {
+      const extractedImages = extractImagesFromMarkdown(rawMarkdown);
+      const plainText = stripMarkdown(rawMarkdown);
+      const htmlContent = await marked.parse(rawMarkdown);
+
       // 1. Рубрика (1:M)
       let rubricId = null;
       if (data.rubric) {
@@ -111,7 +170,7 @@ async function migrate() {
       // Подготовка даты публикации
       const pubDateValue = data.date ? new Date(data.date).toISOString() : new Date().toISOString();
 
-      // 2. Вставка поста в таблицу posts
+      // 2. Вставка / обновление поста в таблицу posts
       await turso.execute({
         sql: `
           INSERT INTO posts (
@@ -144,7 +203,7 @@ async function migrate() {
           Array.isArray(data.authors) ? data.authors.join(", ") : data.authors || null,
           Array.isArray(data.tags) ? data.tags.join(", ") : data.tags || null,
           calculateReadingTime(plainText) || null,
-          content.trim(),
+          trimmedMarkdown,
           htmlContent || null,
           rubricId,
           !!data.featured ? 1 : 0,
@@ -159,7 +218,7 @@ async function migrate() {
         sql: `SELECT id FROM posts WHERE slug = ?;`,
         args: [slug],
       });
-      const postId = postRes.rows[0]?.id;
+      const postId = Number(postRes.rows[0]?.id || 0);
 
       if (postId) {
         // 2.1. Изображения поста (1:M)
@@ -245,21 +304,39 @@ async function migrate() {
             });
           }
         }
+
+        existingPosts.set(slug, {
+          id: postId,
+          contentLength: trimmedMarkdown.length,
+          htmlLength: String(htmlContent || "").length,
+        });
       }
 
-      console.log(`[Успешно] Мигрирована статья: ${slug} (изображений: ${extractedImages.length})`);
+      insertedOrUpdated++;
+      hadChanges = true;
+      console.log(
+        `[Успешно] Мигрирована статья: ${slug} (изображений: ${extractedImages.length})`,
+      );
     } catch (err) {
       console.error(`[Ошибка] Не удалось мигрировать статью ${slug}:`, err);
     }
   }
 
-  // Переиндексация FTS5
-  try {
-    console.log("🔄 Переиндексация FTS5...");
-    await turso.execute("INSERT INTO posts_fts(posts_fts) VALUES('rebuild');");
-    console.log("✨ Поисковый индекс FTS5 успешно обновлен!");
-  } catch (err) {
-    console.error("[Предупреждение] Ошибка переиндексации FTS5:", err);
+  console.log(
+    `📊 Итог: обработано ${insertedOrUpdated}, пропущено (уже в БД): ${skipped}.`,
+  );
+
+  // Переиндексация FTS5 (только если были изменения или передан --force-all)
+  if (hadChanges || forceAll) {
+    try {
+      console.log("🔄 Переиндексация FTS5...");
+      await turso.execute("INSERT INTO posts_fts(posts_fts) VALUES('rebuild');");
+      console.log("✨ Поисковый индекс FTS5 успешно обновлен!");
+    } catch (err) {
+      console.error("[Предупреждение] Ошибка переиндексации FTS5:", err);
+    }
+  } else {
+    console.log("⏭️ Изменений нет — переиндексация FTS5 пропущена.");
   }
 
   console.log("🎉 Миграция под новую схему завершена!");
