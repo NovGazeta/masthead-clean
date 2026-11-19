@@ -56,12 +56,12 @@ const excerpt =
         <span class="card-authors">
           {authors.map((author) => (
             <>
-              <a href={getFullUrl(author.slug, "author")}>{author.name}</a>{" "}
+              <a href={getFullUrl(author.slug, "author")}>{author.name}</a>
+              {" · "}
             </>
           ))}
         </span>
       )}
-      {" · "}
       <time datetime={validDate.toISOString()}>{formattedDate}</time>
       {post.readingTime && <span> · {post.readingTime}</span>}
     </div>
