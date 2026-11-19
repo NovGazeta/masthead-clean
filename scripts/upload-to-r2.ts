@@ -25,7 +25,35 @@ const s3 = new S3Client({
   },
 });
 
+const IGNORED_FILE_NAMES = new Set([
+  ".ds_store",
+  "thumbs.db",
+  "ehthumbs.db",
+  "desktop.ini",
+  ".gitkeep",
+  ".keep",
+]);
+
+const IGNORED_DIR_NAMES = new Set([
+  ".git",
+  "node_modules",
+  ".astro",
+  ".vercel",
+  ".cache",
+  "__pycache__",
+]);
+
+function isIgnoredFileName(fileName: string): boolean {
+  return IGNORED_FILE_NAMES.has(fileName.toLowerCase());
+}
+
+function isIgnoredDirName(dirName: string, extraIgnoredDirs: Set<string>): boolean {
+  const lower = dirName.toLowerCase();
+  return IGNORED_DIR_NAMES.has(lower) || extraIgnoredDirs.has(lower);
+}
+
 const MIME_TYPES: Record<string, string> = {
+  // Изображения
   ".webp": "image/webp",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -33,9 +61,41 @@ const MIME_TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".avif": "image/avif",
   ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".bmp": "image/bmp",
+  ".tif": "image/tiff",
+  ".tiff": "image/tiff",
+  // Видео и аудио
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
+  ".wav": "audio/wav",
+  // Документы и текст
+  ".pdf": "application/pdf",
+  ".txt": "text/plain; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".xml": "application/xml; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  // Шрифты и архивы
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".zip": "application/zip",
+  ".gz": "application/gzip",
+  ".tar": "application/x-tar",
 };
 
-const SUPPORTED_EXTS = new Set(Object.keys(MIME_TYPES));
+function detectMimeType(fileName: string): string {
+  const ext = path.extname(fileName).toLowerCase();
+  return MIME_TYPES[ext] || "application/octet-stream";
+}
 
 interface CliOptions {
   sourceDir: string;
@@ -43,6 +103,7 @@ interface CliOptions {
   dryRun: boolean;
   reportPath?: string;
   fromReportPath?: string;
+  extraIgnoredDirs: Set<string>;
 }
 
 interface FolderBatch {
@@ -65,6 +126,7 @@ interface RemoteObjectMeta {
 interface ReportEntry {
   key: string;
   localPath: string;
+  contentType: string;
   localSize: number;
   remoteSize?: number;
   url: string;
@@ -89,11 +151,21 @@ function normalizePrefix(prefix: string): string {
   return prefix.replace(/^\/+|\/+$/g, "");
 }
 
+function appendIgnoredDirs(target: Set<string>, rawValue: string): void {
+  for (const part of rawValue.split(",")) {
+    const clean = part.trim().toLowerCase();
+    if (clean) {
+      target.add(clean);
+    }
+  }
+}
+
 function parseCliArgs(argv: string[]): CliOptions {
   const positional: string[] = [];
   let dryRun = false;
   let reportPath: string | undefined;
   let fromReportPath: string | undefined;
+  const extraIgnoredDirs = new Set<string>();
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -121,17 +193,29 @@ function parseCliArgs(argv: string[]): CliOptions {
       if (val) {
         fromReportPath = val;
       }
+    } else if (arg === "--ignore-dir") {
+      const nextVal = argv[i + 1];
+      if (nextVal && !nextVal.startsWith("-")) {
+        appendIgnoredDirs(extraIgnoredDirs, nextVal);
+        i++;
+      }
+    } else if (arg.startsWith("--ignore-dir=")) {
+      const val = arg.slice("--ignore-dir=".length).trim();
+      if (val) {
+        appendIgnoredDirs(extraIgnoredDirs, val);
+      }
     } else if (!arg.startsWith("-")) {
       positional.push(arg);
     }
   }
 
   return {
-    sourceDir: path.resolve(positional[0] || "./images"),
+    sourceDir: path.resolve(positional[0] || "./files"),
     keyPrefix: normalizePrefix(positional[1] || ""),
     dryRun,
     reportPath,
     fromReportPath,
+    extraIgnoredDirs,
   };
 }
 
@@ -203,6 +287,7 @@ async function collectFolderBatches(
   rootDir: string,
   currentDir: string,
   basePrefix: string,
+  extraIgnoredDirs: Set<string>,
 ): Promise<FolderBatch[]> {
   const entries = await fs.readdir(currentDir, { withFileTypes: true });
   const relDir = path.relative(rootDir, currentDir).split(path.sep).join("/");
@@ -214,12 +299,15 @@ async function collectFolderBatches(
   for (const entry of entries) {
     const fullPath = path.join(currentDir, entry.name);
     if (entry.isDirectory()) {
+      if (isIgnoredDirName(entry.name, extraIgnoredDirs)) {
+        continue;
+      }
       subdirs.push(fullPath);
     } else if (entry.isFile()) {
-      const ext = path.extname(entry.name).toLowerCase();
-      if (SUPPORTED_EXTS.has(ext)) {
-        files.push(fullPath);
+      if (isIgnoredFileName(entry.name)) {
+        continue;
       }
+      files.push(fullPath);
     }
   }
 
@@ -232,7 +320,7 @@ async function collectFolderBatches(
   ];
 
   for (const subdir of subdirs) {
-    batches.push(...(await collectFolderBatches(rootDir, subdir, basePrefix)));
+    batches.push(...(await collectFolderBatches(rootDir, subdir, basePrefix, extraIgnoredDirs)));
   }
 
   return batches;
@@ -250,8 +338,7 @@ async function uploadFileToFolder(
   },
 ): Promise<void> {
   const fileName = path.basename(filePath);
-  const ext = path.extname(fileName).toLowerCase();
-  const contentType = MIME_TYPES[ext] || "application/octet-stream";
+  const contentType = detectMimeType(fileName);
   const key = joinR2Key(r2Prefix, fileName);
 
   const fileStat = await fs.stat(filePath);
@@ -262,6 +349,7 @@ async function uploadFileToFolder(
   const entry: ReportEntry = {
     key,
     localPath: filePath,
+    contentType,
     localSize,
     ...(typeof remoteMeta.size === "number" ? { remoteSize: remoteMeta.size } : {}),
     url: publicUrl,
@@ -285,11 +373,11 @@ async function uploadFileToFolder(
     if (isOverwrite) {
       stats.overwritten += 1;
       reportLists.toOverwrite.push(entry);
-      console.log(`[DRY-RUN] OVERWRITE (${sizeInfo}): ${key} -> ${publicUrl}`);
+      console.log(`[DRY-RUN] OVERWRITE (${sizeInfo}, ${contentType}): ${key} -> ${publicUrl}`);
     } else {
       stats.uploaded += 1;
       reportLists.toUpload.push(entry);
-      console.log(`[DRY-RUN] UPLOAD (${sizeInfo}): ${key} -> ${publicUrl}`);
+      console.log(`[DRY-RUN] UPLOAD (${sizeInfo}, ${contentType}): ${key} -> ${publicUrl}`);
     }
     return;
   }
@@ -313,7 +401,7 @@ async function uploadFileToFolder(
   }
 
   const tag = isOverwrite ? "OVERWRITE" : "OK";
-  console.log(`${tag} (${sizeInfo}): ${key} -> ${publicUrl}`);
+  console.log(`${tag} (${sizeInfo}, ${contentType}): ${key} -> ${publicUrl}`);
 }
 
 async function runFromReport(fromReportPath: string, dryRun: boolean): Promise<void> {
@@ -368,8 +456,7 @@ async function runFromReport(fromReportPath: string, dryRun: boolean): Promise<v
     const fileStat = await fs.stat(localPath);
     const localSize = fileStat.size;
     const key = normalizePrefix(item.key);
-    const ext = path.extname(key).toLowerCase();
-    const contentType = MIME_TYPES[ext] || "application/octet-stream";
+    const contentType = item.contentType || detectMimeType(key);
     const publicUrl =
       item.url || (publicBaseUrl ? `${publicBaseUrl}/${key}` : `r2://${bucketName}/${key}`);
 
@@ -383,10 +470,10 @@ async function runFromReport(fromReportPath: string, dryRun: boolean): Promise<v
     if (dryRun) {
       if (isOverwrite) {
         stats.overwritten += 1;
-        console.log(`[DRY-RUN] OVERWRITE (${sizeInfo}): ${key} -> ${publicUrl}`);
+        console.log(`[DRY-RUN] OVERWRITE (${sizeInfo}, ${contentType}): ${key} -> ${publicUrl}`);
       } else {
         stats.uploaded += 1;
-        console.log(`[DRY-RUN] UPLOAD (${sizeInfo}): ${key} -> ${publicUrl}`);
+        console.log(`[DRY-RUN] UPLOAD (${sizeInfo}, ${contentType}): ${key} -> ${publicUrl}`);
       }
       return;
     }
@@ -409,7 +496,7 @@ async function runFromReport(fromReportPath: string, dryRun: boolean): Promise<v
     }
 
     const tag = isOverwrite ? "OVERWRITE" : "OK";
-    console.log(`${tag} (${sizeInfo}): ${key} -> ${publicUrl}`);
+    console.log(`${tag} (${sizeInfo}, ${contentType}): ${key} -> ${publicUrl}`);
   });
 
   const prefixSummary = dryRun ? "[DRY-RUN] План по отчёту завершён. " : "Загрузка по отчёту завершена. ";
@@ -448,9 +535,8 @@ async function writeDryRunReport(
 }
 
 async function run(): Promise<void> {
-  const { sourceDir, keyPrefix, dryRun, reportPath, fromReportPath } = parseCliArgs(
-    process.argv.slice(2),
-  );
+  const { sourceDir, keyPrefix, dryRun, reportPath, fromReportPath, extraIgnoredDirs } =
+    parseCliArgs(process.argv.slice(2));
 
   if (fromReportPath) {
     await runFromReport(fromReportPath, dryRun);
@@ -464,16 +550,16 @@ async function run(): Promise<void> {
     process.exit(1);
   }
 
-  const batches = await collectFolderBatches(sourceDir, sourceDir, keyPrefix);
+  const batches = await collectFolderBatches(sourceDir, sourceDir, keyPrefix, extraIgnoredDirs);
   const totalFiles = batches.reduce((acc, b) => acc + b.files.length, 0);
 
   if (totalFiles === 0) {
-    console.log("Подходящих изображений не найдено.");
+    console.log("Файлов для загрузки не найдено.");
     return;
   }
 
   console.log(
-    `${dryRun ? "[DRY-RUN] " : ""}Найдено папок: ${batches.length}, изображений: ${totalFiles}. Бакет: "${bucketName}"...`,
+    `${dryRun ? "[DRY-RUN] " : ""}Найдено папок: ${batches.length}, файлов: ${totalFiles}. Бакет: "${bucketName}"...`,
   );
 
   const stats: UploadStats = { uploaded: 0, overwritten: 0, skipped: 0 };
