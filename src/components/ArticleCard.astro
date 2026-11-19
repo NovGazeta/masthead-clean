@@ -1,14 +1,15 @@
 ---
 import type { Post } from "@/lib/posts";
-import { parseAuthors } from "@/lib/posts";
+import { getFullUrl, parseAuthors, slugify } from "@/lib/posts";
 
 interface Props {
   post: Post;
   featured?: boolean;
   hideAuthors?: boolean;
+  hideRubric?: boolean;
 }
 
-const { post, featured = false, hideAuthors = false } = Astro.props;
+const { post, featured = false, hideAuthors = false, hideRubric = false } = Astro.props;
 
 const authors = hideAuthors
   ? []
@@ -36,20 +37,31 @@ const excerpt =
 <article class:list={["article-card", { "is-featured": featured }]}>
   <div class="card-body">
     <div class="card-meta-top">
-      {post.rubric && <span class="category-tag">{post.rubric}</span>}
+      {!hideRubric && post.rubric && (
+        <span class="category-tag">
+          <a href={getFullUrl(slugify(post.rubric), "category")}>{post.rubric}</a>
+        </span>
+      )}
       {post.genre && <span class="genre-badge meta-label">{post.genre}</span>}
     </div>
 
     <h2 class="card-title">
-      <a href={`/articles/${encodeURIComponent(post.slug)}`}>{post.title}</a>
+      <a href={getFullUrl(post.slug)}>{post.title}</a>
     </h2>
 
     {excerpt && <p class="card-excerpt">{excerpt}</p>}
 
     <div class="card-footer meta-label">
       {!hideAuthors && authors.length > 0 && (
-        <span class="card-authors">{authors.map((a) => a.name).join(", ")} · </span>
+        <span class="card-authors">
+          {authors.map((author) => (
+            <>
+              <a href={getFullUrl(author.slug, "author")}>{author.name}</a>{" "}
+            </>
+          ))}
+        </span>
       )}
+      {" · "}
       <time datetime={validDate.toISOString()}>{formattedDate}</time>
       {post.readingTime && <span> · {post.readingTime}</span>}
     </div>

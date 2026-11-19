@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import rss from "@astrojs/rss";
 import pkg from "@/lib/pkg";
-import { getRecentPosts } from "@/lib/posts";
+import { getFullUrl, getRecentPosts } from "@/lib/posts";
 import { applyAssetBaseUrlToHtml, toAbsoluteAssetUrl } from "@/lib/assets";
 
 const RSS_MAX_ITEMS = 20;
@@ -45,7 +45,7 @@ export const GET: APIRoute = async (context) => {
     description: pkg.description,
     site: siteUrl,
     items: latestPosts.map((post) => {
-      const link = `/articles/${post.slug}`;
+      const link = getFullUrl(post.slug);
       const imageUrl = toAbsoluteAssetUrl(post.image || post.images?.[0]?.url, siteUrl);
       const fullHtml = makeHtmlImagesAbsolute(post.htmlContent, siteUrl);
       const pubDate =

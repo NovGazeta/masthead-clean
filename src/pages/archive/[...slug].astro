@@ -1,6 +1,6 @@
 ---
 import { turso } from "@/lib/turso";
-import { getPaginatedPosts, type Post } from "@/lib/posts";
+import { getFullUrl, type Post } from "@/lib/posts";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import Pagination from "@/components/Pagination.astro";
 
@@ -239,7 +239,7 @@ else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-whil
 
                         <div class="issue-body">
                           <div class="issue-headline-line">
-                            <a href={`/articles/${post.slug}`} class="issue-link">
+                            <a href={getFullUrl(post.slug)} class="issue-link">
                               {post.title}
                             </a>
                           </div>

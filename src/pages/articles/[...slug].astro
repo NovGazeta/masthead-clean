@@ -1,5 +1,5 @@
 ---
-import { getPostBySlug, getRelatedPosts, slugifyTag, parseAuthors } from "@/lib/posts";
+import { getFullUrl, getPostBySlug, getRelatedPosts, slugifyTag, parseAuthors } from "@/lib/posts";
 import { applyAssetBaseUrlToHtml, toAbsoluteAssetUrl } from "@/lib/assets";
 import { toSlug } from "@/lib/translit";
 import BaseLayout from "@/layouts/BaseLayout.astro";
@@ -71,7 +71,7 @@ const formattedDate = validPubDate.toLocaleDateString("ru-RU", {
 });
 
 const baseUrl = (Astro.site?.toString() || Astro.url.origin).replace(/\/$/, "");
-const postUrl = new URL(`/articles/${encodeURIComponent(post.slug)}`, baseUrl).toString();
+const postUrl = new URL(`${getFullUrl(post.slug)}`, baseUrl).toString();
 const isoDate = validPubDate.toISOString();
 
 const telegramShareUrl = `https://t.me/share/url?url=${encodeURIComponent(postUrl)}&text=${encodeURIComponent(title)}`;

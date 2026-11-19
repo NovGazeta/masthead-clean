@@ -125,7 +125,7 @@ export function authorNameFromSlug(slug: string): string {
     .join("");
 }
 
-export function getPostUrl(slug: string, prefix = "articles"): string {
+export function getFullUrl(slug: string, prefix = "articles"): string {
   const cleanSlug = String(slug ?? "").trim().replace(/^\/+|\/+$/g, "");
   const cleanPrefix = String(prefix ?? "").trim().replace(/^\/+|\/+$/g, "");
 

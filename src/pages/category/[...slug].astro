@@ -97,7 +97,7 @@ if (!import.meta.env.DEV) {
       ) : (
         <div class="articles-grid">
           {paginatedPosts.map((post) => (
-            <ArticleCard post={post} />
+            <ArticleCard post={post} hideRubric={true} />
           ))}
         </div>
       )}
@@ -105,7 +105,7 @@ if (!import.meta.env.DEV) {
       <Pagination
         currentPage={currentPage}
         totalPages={totalPages}
-        basePath={`/category/${encodeURIComponent(categorySlug)}`}
+        basePath={`/category/${categorySlug}`}
         ariaLabel="Пагинация по рубрике"
       />
     </section>

@@ -1,6 +1,6 @@
 ---
 import { turso } from "@/lib/turso";
-import { getPostWord, type Post } from "@/lib/posts";
+import { getFullUrl, getPostWord, type Post } from "@/lib/posts";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import Pagination from "@/components/Pagination.astro";
 
@@ -323,7 +323,7 @@ else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-whil
                 </div>
 
                 <h2 class="result-title">
-                  <a href={`/articles/${post.slug}`} set:html={titleHtml} />
+                  <a href={getFullUrl(post.slug)} set:html={titleHtml} />
                 </h2>
 
                 {snippetHtml && <p class="result-snippet" set:html={snippetHtml} />}

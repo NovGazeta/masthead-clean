@@ -1,5 +1,6 @@
 ---
 import type { Post } from "@/lib/posts";
+import { getFullUrl } from "@/lib/posts";
 
 interface Props {
   post: Post;
@@ -19,17 +20,17 @@ const formattedDate = pubDate?.toLocaleDateString("ru-RU", {
   <div class="featured-content">
     <span class="category-tag">{category}</span>
     <h1>
-      <a href={`/articles/${slug}`}>{title}</a>
+      <a href={getFullUrl(slug)}>{title}</a>
     </h1>
     <p class="excerpt">{description}</p>
     <div class="meta-label">
-      Автор: <a href={`/author/${post.authorSlug}`}>{author}</a> &mdash; {formattedDate} &bull;{" "}
-      {readingTime}
+      Автор: <a href={getFullUrl(post.authorSlug, "author")}>{author}</a> &mdash; {formattedDate}{" "}
+      &bull; {readingTime}
     </div>
   </div>
 
   {image && (
-    <a href={`/articles/${slug}`} class="featured-image">
+    <a href={getFullUrl(slug)} class="featured-image">
       <img src={image} alt={title} />
     </a>
   )}
