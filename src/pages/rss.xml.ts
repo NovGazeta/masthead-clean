@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import rss from "@astrojs/rss";
 import pkg from "@/lib/pkg";
-import { getAllPosts } from "@/lib/posts";
+import { getRecentPosts } from "@/lib/posts";
 import { applyAssetBaseUrlToHtml, toAbsoluteAssetUrl } from "@/lib/assets";
 
 const RSS_MAX_ITEMS = 20;
@@ -37,8 +37,7 @@ function escapeXmlAttr(value: string): string {
 }
 
 export const GET: APIRoute = async (context) => {
-  const allPosts = await getAllPosts();
-  const latestPosts = allPosts.slice(0, RSS_MAX_ITEMS);
+  const latestPosts = await getRecentPosts(RSS_MAX_ITEMS);
   const siteUrl = (context.site ?? new URL(context.request.url)).toString();
 
   return rss({

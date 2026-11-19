@@ -63,9 +63,47 @@ export interface PaginatedResult<T> {
   hasNext: boolean;
 }
 
+export interface PaginatedPostsOptions {
+  page?: number;
+  perPage?: number;
+  rubricSlug?: string;
+  authorSlug?: string;
+  tagSlug?: string;
+}
+
 export interface SearchResult extends Post {
   snippetHtml: string;
 }
+
+const BASE_POST_SELECT = `
+  SELECT
+    p.*,
+    r.name as rubric_name,
+    r.slug as rubric_slug,
+    (
+      SELECT json_group_array(json_object('name', a.name, 'slug', a.slug, 'role', a.role))
+      FROM posts_authors pa
+      JOIN authors a ON pa.author_id = a.id
+      WHERE pa.post_id = p.id
+    ) as authors_json,
+    (
+      SELECT json_group_array(json_object('name', t.name, 'slug', t.slug))
+      FROM posts_tags pt
+      JOIN tags t ON pt.tag_id = t.id
+      WHERE pt.post_id = p.id
+    ) as tags_json,
+    (
+      SELECT json_group_array(json_object('id', img.id, 'url', img.url, 'alt', img.alt, 'position', img.position))
+      FROM (
+        SELECT id, url, alt, position
+        FROM images
+        WHERE post_id = p.id
+        ORDER BY position ASC, id ASC
+      ) img
+    ) as images_json
+  FROM posts p
+  LEFT JOIN rubrics r ON p.rubric_id = r.id
+`;
 
 // Вспомогательная функция для создания слага из строки
 export function slugify(text: string): string {
@@ -291,185 +329,407 @@ export function parseAuthors(authorsInput: unknown): AuthorSummary[] {
   return Array.from(authorsMap.values());
 }
 
-/**
- * Получение всех опубликованных постов из Turso с реляционными данными
- */
-export async function getAllPosts(): Promise<Post[]> {
-  try {
-    const result = await turso.execute(`
-      SELECT
-        p.*,
-        r.name as rubric_name,
-        r.slug as rubric_slug,
-        (
-          SELECT json_group_array(json_object('name', a.name, 'slug', a.slug, 'role', a.role))
-          FROM posts_authors pa
-          JOIN authors a ON pa.author_id = a.id
-          WHERE pa.post_id = p.id
-        ) as authors_json,
-        (
-          SELECT json_group_array(json_object('name', t.name, 'slug', t.slug))
-          FROM posts_tags pt
-          JOIN tags t ON pt.tag_id = t.id
-          WHERE pt.post_id = p.id
-        ) as tags_json,
-        (
-          SELECT json_group_array(json_object('id', img.id, 'url', img.url, 'alt', img.alt, 'position', img.position))
-          FROM (
-            SELECT id, url, alt, position
-            FROM images
-            WHERE post_id = p.id
-            ORDER BY position ASC, id ASC
-          ) img
-        ) as images_json
-      FROM posts p
-      LEFT JOIN rubrics r ON p.rubric_id = r.id
-      WHERE p.draft = 0
-      ORDER BY p.pub_date DESC, p.date DESC;
+function mapRowToPost(row: any): Post {
+  const authors: AuthorSummary[] = row.authors_json ? JSON.parse(row.authors_json) : [];
+  const tagsData = row.tags_json ? JSON.parse(row.tags_json) : [];
+  const tags: string[] = tagsData.map((t: any) => t.name || t);
+
+  const imagesRaw = row.images_json ? JSON.parse(row.images_json) : [];
+  const images: PostImage[] = imagesRaw
+    .filter((img: any) => img && img.url)
+    .map((img: any) => ({
+      id: Number(img.id),
+      url: String(img.url),
+      alt: img.alt ? String(img.alt) : undefined,
+      position: Number(img.position ?? 0),
+    }));
+
+  const rawHtml = row.htmlContent || (row.content ? (marked.parse(row.content) as string) : "");
+  const { html, toc } = extractTocAndInjectIds(rawHtml);
+  const plainText = stripMarkdown(row.content || "");
+
+  return {
+    id: Number(row.id),
+    slug: row.slug,
+    source: row.source || undefined,
+    title: row.title,
+    subtitle: row.subtitle || undefined,
+    pubDate: new Date(row.pub_date || row.date),
+    authors,
+    rubric: row.rubric_name || "",
+    genre: row.genre || undefined,
+    tags,
+    draft: Boolean(row.draft),
+    featured: Boolean(row.featured),
+    image: row.image || images[0]?.url || undefined,
+    imageCaption: row.imageCaption || images[0]?.alt || undefined,
+    images,
+    readingTime: row.reading_time || calculateReadingTime(plainText),
+    toc,
+    htmlContent: html,
+    plainText,
+  } satisfies Post;
+}
+
+function buildPostFilterWhere(options: Omit<PaginatedPostsOptions, "page" | "perPage">): {
+  whereSql: string;
+  args: (string | number)[];
+} {
+  const conditions: string[] = ["p.draft = 0"];
+  const args: (string | number)[] = [];
+
+  if (options.rubricSlug) {
+    conditions.push("r.slug = ?");
+    args.push(options.rubricSlug);
+  }
+
+  if (options.authorSlug) {
+    conditions.push(`
+      EXISTS (
+        SELECT 1
+        FROM posts_authors pa
+        JOIN authors a ON pa.author_id = a.id
+        WHERE pa.post_id = p.id AND a.slug = ?
+      )
     `);
+    args.push(options.authorSlug);
+  }
 
-    return result.rows.map((row: any) => {
-      const authors: AuthorSummary[] = row.authors_json ? JSON.parse(row.authors_json) : [];
-      const tagsData = row.tags_json ? JSON.parse(row.tags_json) : [];
-      const tags: string[] = tagsData.map((t: any) => t.name || t);
+  if (options.tagSlug) {
+    conditions.push(`
+      EXISTS (
+        SELECT 1
+        FROM posts_tags pt
+        JOIN tags t ON pt.tag_id = t.id
+        WHERE pt.post_id = p.id AND t.slug = ?
+      )
+    `);
+    args.push(options.tagSlug);
+  }
 
-      const imagesRaw = row.images_json ? JSON.parse(row.images_json) : [];
-      const images: PostImage[] = imagesRaw
-        .filter((img: any) => img && img.url)
-        .map((img: any) => ({
-          id: Number(img.id),
-          url: String(img.url),
-          alt: img.alt ? String(img.alt) : undefined,
-          position: Number(img.position ?? 0),
-        }));
+  return {
+    whereSql: `WHERE ${conditions.join(" AND ")}`,
+    args,
+  };
+}
 
-      const rawHtml = row.htmlContent || (row.content ? (marked.parse(row.content) as string) : "");
-      const { html, toc } = extractTocAndInjectIds(rawHtml);
-      const plainText = stripMarkdown(row.content || "");
+/**
+ * Точечное получение одной опубликованной статьи по slug
+ */
+export async function getPostBySlug(slug: string): Promise<Post | null> {
+  const safeSlug = slug.replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!safeSlug) return null;
 
-      return {
-        id: Number(row.id),
-        slug: row.slug,
-        source: row.source || undefined,
-        title: row.title,
-        subtitle: row.subtitle || undefined,
-        pubDate: new Date(row.pub_date || row.date),
-        authors,
-        rubric: row.rubric_name || "",
-        genre: row.genre || undefined,
-        tags,
-        draft: Boolean(row.draft),
-        featured: Boolean(row.featured),
-        image: row.image || images[0]?.url || undefined,
-        imageCaption: row.imageCaption || images[0]?.alt || undefined,
-        images,
-        readingTime: row.reading_time || calculateReadingTime(plainText),
-        toc,
-        htmlContent: html,
-        plainText,
-      } satisfies Post;
+  try {
+    const result = await turso.execute({
+      sql: `${BASE_POST_SELECT} WHERE p.slug = ? AND p.draft = 0 LIMIT 1;`,
+      args: [safeSlug],
     });
+
+    const row = result.rows[0];
+    return row ? mapRowToPost(row) : null;
   } catch (error) {
-    console.error("Ошибка получения постов из Turso:", error);
+    console.error("Ошибка получения поста по slug из Turso:", error);
+    return null;
+  }
+}
+
+/**
+ * Получение последних N опубликованных статей (например, для RSS или ленты)
+ */
+export async function getRecentPosts(limit = 20): Promise<Post[]> {
+  const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
+
+  try {
+    const result = await turso.execute({
+      sql: `${BASE_POST_SELECT} WHERE p.draft = 0 ORDER BY p.pub_date DESC, p.date DESC LIMIT ?;`,
+      args: [safeLimit],
+    });
+
+    return result.rows.map(mapRowToPost);
+  } catch (error) {
+    console.error("Ошибка получения последних постов из Turso:", error);
     return [];
   }
 }
 
-export async function getPostBySlug(slug: string): Promise<Post | null> {
-  const safeSlug = slug.replace(/^\/+/, "").replace(/\/+$/, "");
-  const posts = await getAllPosts();
-  return posts.find((p) => p.slug === safeSlug) ?? null;
-}
+/**
+ * Похожие статьи: сначала из той же рубрики, при нехватке — свежие из других рубрик
+ */
+export async function getRelatedPosts(
+  currentSlug: string,
+  rubricName: string,
+  limit = 3,
+): Promise<Post[]> {
+  const safeLimit = Math.max(1, Math.min(20, Math.floor(limit)));
+  const cleanRubric = rubricName.trim();
+  const collected = new Map<string, Post>();
 
-export function getAllAuthors(posts: Post[]): AuthorSummary[] {
-  const map = new Map<string, AuthorSummary>();
+  try {
+    if (cleanRubric) {
+      const sameRubricRes = await turso.execute({
+        sql: `
+          ${BASE_POST_SELECT}
+          WHERE p.draft = 0
+            AND p.slug != ?
+            AND LOWER(TRIM(COALESCE(r.name, ''))) = LOWER(?)
+          ORDER BY p.pub_date DESC, p.date DESC
+          LIMIT ?;
+        `,
+        args: [currentSlug, cleanRubric, safeLimit],
+      });
 
-  for (const post of posts) {
-    for (const author of post.authors) {
-      const existing = map.get(author.slug);
-      if (!existing) {
-        map.set(author.slug, {
-          postCount: 1,
-          rubrics: new Set([post.rubric.trim()]),
-          latestPostDate: post.pubDate,
-          slugName: authorNameFromSlug(author.slug),
-          ...author,
-        });
-      } else {
-        existing.postCount = (existing.postCount || 1) + 1;
-        existing.rubrics?.add(post.rubric.trim());
-        if (existing.latestPostDate && post.pubDate > existing.latestPostDate) {
-          existing.latestPostDate = post.pubDate;
+      for (const row of sameRubricRes.rows) {
+        const mapped = mapRowToPost(row);
+        collected.set(mapped.slug, mapped);
+      }
+    }
+
+    if (collected.size < safeLimit) {
+      const needed = safeLimit - collected.size;
+      const fallbackRes = await turso.execute({
+        sql: `
+          ${BASE_POST_SELECT}
+          WHERE p.draft = 0
+            AND p.slug != ?
+            AND LOWER(TRIM(COALESCE(r.name, ''))) != LOWER(?)
+          ORDER BY p.pub_date DESC, p.date DESC
+          LIMIT ?;
+        `,
+        args: [currentSlug, cleanRubric, needed],
+      });
+
+      for (const row of fallbackRes.rows) {
+        const mapped = mapRowToPost(row);
+        if (!collected.has(mapped.slug)) {
+          collected.set(mapped.slug, mapped);
         }
       }
     }
-  }
 
-  return Array.from(map.values())
-    .map((entry) => ({
-      ...entry,
-      rubrics: Array.from(entry.rubrics || []),
-    }))
-    .sort((a, b) => (b.postCount || 0) - (a.postCount || 0) || a.name.localeCompare(b.name, "ru"));
+    return Array.from(collected.values()).slice(0, safeLimit);
+  } catch (error) {
+    console.error("Ошибка получения похожих постов из Turso:", error);
+    return [];
+  }
 }
 
+/**
+ * Пагинированная выборка статей из Turso через COUNT(*) и LIMIT/OFFSET
+ */
+export async function getPaginatedPosts(
+  options: PaginatedPostsOptions = {},
+): Promise<PaginatedResult<Post>> {
+  const requestedPage = options.page ?? 1;
+  const perPage = Math.max(1, Math.min(100, Math.floor(options.perPage ?? 9)));
+  const { whereSql, args } = buildPostFilterWhere(options);
+
+  try {
+    const countResult = await turso.execute({
+      sql: `
+        SELECT COUNT(*) as total
+        FROM posts p
+        LEFT JOIN rubrics r ON p.rubric_id = r.id
+        ${whereSql};
+      `,
+      args,
+    });
+
+    const totalItems = Number(countResult.rows[0]?.total ?? 0);
+    const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+    const currentPage = Number.isFinite(requestedPage)
+      ? Math.min(totalPages, Math.max(1, Math.floor(requestedPage)))
+      : 1;
+    const offset = (currentPage - 1) * perPage;
+
+    const rowsResult = await turso.execute({
+      sql: `
+        ${BASE_POST_SELECT}
+        ${whereSql}
+        ORDER BY p.pub_date DESC, p.date DESC
+        LIMIT ? OFFSET ?;
+      `,
+      args: [...args, perPage, offset],
+    });
+
+    return {
+      items: rowsResult.rows.map(mapRowToPost),
+      currentPage,
+      totalPages,
+      totalItems,
+      perPage,
+      hasPrev: currentPage > 1,
+      hasNext: currentPage < totalPages,
+    };
+  } catch (error) {
+    console.error("Ошибка пагинированного получения постов из Turso:", error);
+    return {
+      items: [],
+      currentPage: 1,
+      totalPages: 1,
+      totalItems: 0,
+      perPage,
+      hasPrev: false,
+      hasNext: false,
+    };
+  }
+}
+
+/**
+ * Агрегация авторов с количеством статей напрямую в SQL
+ */
+export async function getAllAuthors(): Promise<AuthorSummary[]> {
+  try {
+    const result = await turso.execute(`
+      SELECT
+        a.name,
+        a.slug,
+        a.role,
+        COUNT(p.id) as post_count,
+        MAX(COALESCE(p.pub_date, p.date)) as latest_post_date,
+        GROUP_CONCAT(DISTINCT r.name) as rubrics_csv
+      FROM authors a
+      JOIN posts_authors pa ON pa.author_id = a.id
+      JOIN posts p ON p.id = pa.post_id AND p.draft = 0
+      LEFT JOIN rubrics r ON p.rubric_id = r.id
+      GROUP BY a.id, a.name, a.slug, a.role
+      ORDER BY post_count DESC, a.name COLLATE NOCASE ASC;
+    `);
+
+    return result.rows.map((row: any) => ({
+      name: String(row.name),
+      slug: String(row.slug),
+      slugName: authorNameFromSlug(String(row.slug)),
+      role: row.role ? String(row.role) : undefined,
+      postCount: Number(row.post_count ?? 0),
+      latestPostDate: row.latest_post_date ? new Date(String(row.latest_post_date)) : undefined,
+      rubrics: row.rubrics_csv
+        ? String(row.rubrics_csv)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [],
+    }));
+  } catch (error) {
+    console.error("Ошибка получения авторов из Turso:", error);
+    return [];
+  }
+}
+
+/**
+ * Данные конкретного автора и только его опубликованные статьи
+ */
 export async function getAuthorBySlug(
   authorSlug: string,
 ): Promise<{ author?: AuthorSummary; posts: Post[] }> {
-  const allPosts = await getAllPosts();
-  const authors = getAllAuthors(allPosts);
-  const author = authors.find((a) => a.slug === authorSlug);
-  return {
-    author,
-    posts: author ? allPosts.filter((p) => p.authors.some((a) => a.slug === authorSlug)) : [],
-  };
-}
+  const safeSlug = slugifyAuthor(authorSlug);
+  if (!safeSlug) return { author: undefined, posts: [] };
 
-export async function getAllTags(): Promise<TagSummary[]> {
-  const posts = await getAllPosts();
-  const tagMap = new Map<string, { name: string; slug: string; count: number }>();
+  try {
+    const [allAuthors, postsRes] = await Promise.all([
+      getAllAuthors(),
+      turso.execute({
+        sql: `
+          ${BASE_POST_SELECT}
+          WHERE p.draft = 0
+            AND EXISTS (
+              SELECT 1
+              FROM posts_authors pa
+              JOIN authors a ON pa.author_id = a.id
+              WHERE pa.post_id = p.id AND a.slug = ?
+            )
+          ORDER BY p.pub_date DESC, p.date DESC;
+        `,
+        args: [safeSlug],
+      }),
+    ]);
 
-  for (const post of posts) {
-    for (const rawTag of post.tags) {
-      const slug = slugifyTag(rawTag);
-      if (!tagMap.has(slug)) {
-        tagMap.set(slug, { name: rawTag, slug, count: 1 });
-      } else {
-        tagMap.get(slug)!.count += 1;
-      }
-    }
+    const author = allAuthors.find((a) => a.slug === safeSlug);
+    const posts = postsRes.rows.map(mapRowToPost);
+
+    return { author, posts };
+  } catch (error) {
+    console.error("Ошибка получения автора по slug из Turso:", error);
+    return { author: undefined, posts: [] };
   }
-
-  return Array.from(tagMap.values())
-    .map((t) => ({ name: t.name, slug: t.slug, postCount: t.count }))
-    .sort((a, b) => b.postCount - a.postCount || a.name.localeCompare(b.name, "ru"));
 }
 
+/**
+ * Все теги с количеством опубликованных статей напрямую в SQL
+ */
+export async function getAllTags(): Promise<TagSummary[]> {
+  try {
+    const result = await turso.execute(`
+      SELECT
+        t.name,
+        t.slug,
+        COUNT(p.id) as post_count
+      FROM tags t
+      JOIN posts_tags pt ON pt.tag_id = t.id
+      JOIN posts p ON p.id = pt.post_id AND p.draft = 0
+      GROUP BY t.id, t.name, t.slug
+      ORDER BY post_count DESC, t.name COLLATE NOCASE ASC;
+    `);
+
+    return result.rows.map((row: any) => ({
+      name: String(row.name),
+      slug: String(row.slug),
+      postCount: Number(row.post_count ?? 0),
+    }));
+  } catch (error) {
+    console.error("Ошибка получения тегов из Turso:", error);
+    return [];
+  }
+}
+
+/**
+ * Статьи конкретного тега без загрузки всей базы
+ */
 export async function getPostsByTag(
   tagSlug: string,
 ): Promise<{ tagName: string; posts: Post[] } | null> {
   const safeSlug = slugifyTag(tagSlug);
-  const posts = await getAllPosts();
+  if (!safeSlug) return null;
 
-  const matchedPosts = posts.filter((post) => post.tags.some((t) => slugifyTag(t) === safeSlug));
+  try {
+    const tagRes = await turso.execute({
+      sql: `SELECT name, slug FROM tags WHERE slug = ? LIMIT 1;`,
+      args: [safeSlug],
+    });
 
-  if (matchedPosts.length === 0) return null;
+    const postsRes = await turso.execute({
+      sql: `
+        ${BASE_POST_SELECT}
+        WHERE p.draft = 0
+          AND EXISTS (
+            SELECT 1
+            FROM posts_tags pt
+            JOIN tags t ON pt.tag_id = t.id
+            WHERE pt.post_id = p.id AND t.slug = ?
+          )
+        ORDER BY p.pub_date DESC, p.date DESC;
+      `,
+      args: [safeSlug],
+    });
 
-  const sampleTag = matchedPosts.flatMap((p) => p.tags).find((t) => slugifyTag(t) === safeSlug);
-  const tagName = sampleTag || safeSlug;
+    const posts = postsRes.rows.map(mapRowToPost);
+    if (posts.length === 0) return null;
 
-  return { tagName, posts: matchedPosts };
+    const tagName = tagRes.rows[0]?.name ? String(tagRes.rows[0].name) : safeSlug;
+    return { tagName, posts };
+  } catch (error) {
+    console.error("Ошибка получения статей по тегу из Turso:", error);
+    return null;
+  }
 }
 
 export async function getAllRubrics(): Promise<string[]> {
   try {
     const result = await turso.execute("SELECT name FROM rubrics ORDER BY name ASC;");
-    return result.rows.map((row: any) => row.name);
+    return result.rows.map((row: any) => String(row.name));
   } catch (err) {
     console.error("Ошибка получения рубрик из Turso:", err);
-    const posts = await getAllPosts();
-    const rubrics = new Set(posts.map((p) => p.rubric).filter(Boolean));
-    return Array.from(rubrics).sort((a, b) => a.localeCompare(b, "ru"));
+    return [];
   }
 }
 
@@ -498,57 +758,73 @@ export function paginateItems<T>(
   };
 }
 
+/**
+ * Поиск через FTS5: загружаем только найденные статьи
+ */
 export async function searchPosts(query: string): Promise<SearchResult[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];
 
   try {
-    const result = await turso.execute({
+    const ftsRes = await turso.execute({
       sql: `
         SELECT p.slug
         FROM posts_fts fts
         JOIN posts p ON fts.rowid = p.id
         WHERE posts_fts MATCH ? AND p.draft = 0
-        ORDER BY rank;
+        ORDER BY rank
+        LIMIT 50;
       `,
       args: [trimmed],
     });
 
-    const matchedSlugs = new Set(result.rows.map((r: any) => r.slug));
-    const allPosts = await getAllPosts();
+    const matchedSlugs = ftsRes.rows.map((r: any) => String(r.slug)).filter(Boolean);
+    if (matchedSlugs.length === 0) return [];
 
-    return allPosts
-      .filter((post) => matchedSlugs.has(post.slug))
-      .map((post) => ({
-        ...post,
-        snippetHtml: buildHighlightedSnippet(post, trimmed),
-      }));
+    const placeholders = matchedSlugs.map(() => "?").join(", ");
+    const rowsRes = await turso.execute({
+      sql: `${BASE_POST_SELECT} WHERE p.draft = 0 AND p.slug IN (${placeholders});`,
+      args: matchedSlugs,
+    });
+
+    const orderMap = new Map(matchedSlugs.map((slug, idx) => [slug, idx]));
+    const mapped = rowsRes.rows
+      .map(mapRowToPost)
+      .sort((a, b) => (orderMap.get(a.slug) ?? 0) - (orderMap.get(b.slug) ?? 0));
+
+    return mapped.map((post) => ({
+      ...post,
+      snippetHtml: buildHighlightedSnippet(post, trimmed),
+    }));
   } catch (err) {
-    console.warn("FTS5 поиск недоступен, выполняем фоллбек по памяти:", err);
-    const lowerQuery = trimmed.toLowerCase();
-    const allPosts = await getAllPosts();
+    console.warn("FTS5 поиск недоступен, выполняем фоллбек по LIKE в SQL:", err);
+    const pattern = `%${trimmed}%`;
 
-    return allPosts
-      .filter((post) => {
-        const searchable = [
-          post.title,
-          post.subtitle,
-          JSON.stringify(post.authors),
-          post.rubric,
-          post.genre,
-          ...post.tags,
-          post.plainText,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
+    try {
+      const likeRes = await turso.execute({
+        sql: `
+          ${BASE_POST_SELECT}
+          WHERE p.draft = 0
+            AND (
+              p.title LIKE ?
+              OR COALESCE(p.subtitle, '') LIKE ?
+              OR COALESCE(p.content, '') LIKE ?
+              OR COALESCE(p.tags, '') LIKE ?
+            )
+          ORDER BY p.pub_date DESC, p.date DESC
+          LIMIT 50;
+        `,
+        args: [pattern, pattern, pattern, pattern],
+      });
 
-        return searchable.includes(lowerQuery);
-      })
-      .map((post) => ({
+      return likeRes.rows.map(mapRowToPost).map((post) => ({
         ...post,
         snippetHtml: buildHighlightedSnippet(post, trimmed),
       }));
+    } catch (fallbackErr) {
+      console.error("Ошибка фоллбек-поиска в Turso:", fallbackErr);
+      return [];
+    }
   }
 }
 

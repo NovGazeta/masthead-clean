@@ -1,17 +1,18 @@
 ---
-import { getAllPosts, getPostBySlug, slugifyTag, parseAuthors } from "@/lib/posts";
-import { applyAssetBaseUrlToHtml, resolveAssetUrl, toAbsoluteAssetUrl } from "@/lib/assets";
+import { getPostBySlug, getRelatedPosts, slugifyTag, parseAuthors } from "@/lib/posts";
+import { applyAssetBaseUrlToHtml, toAbsoluteAssetUrl } from "@/lib/assets";
 import { toSlug } from "@/lib/translit";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import ArticleCard from "@/components/ArticleCard.astro";
 
-const { slug } = Astro.params;
+const rawSlug = Astro.params.slug ?? "";
+const cleanSlug = decodeURIComponent(rawSlug).replace(/^\/+|\/+$/g, "");
 
-if (!slug) {
+if (!cleanSlug) {
   return Astro.redirect("/404");
 }
 
-const post = await getPostBySlug(decodeURIComponent(slug));
+const post = await getPostBySlug(cleanSlug);
 
 if (!post) {
   return Astro.redirect("/404");
@@ -51,9 +52,8 @@ const telegramShareUrl = `https://t.me/share/url?url=${encodeURIComponent(postUr
 const xShareUrl = `https://x.com/intent/tweet?url=${encodeURIComponent(postUrl)}&text=${encodeURIComponent(title)}`;
 const facebookShareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(postUrl)}`;
 
-const rawCoverImage = image || post.images?.[0]?.url;
-const coverImageUrl = resolveAssetUrl(rawCoverImage);
-const absoluteImageUrl = rawCoverImage ? toAbsoluteAssetUrl(rawCoverImage, baseUrl) : undefined;
+const ogImageSource = image || post.images?.[0]?.url;
+const absoluteImageUrl = ogImageSource ? toAbsoluteAssetUrl(ogImageSource, baseUrl) : undefined;
 const renderedHtml = applyAssetBaseUrlToHtml(htmlContent);
 
 const articleJsonLd: Record<string, unknown> = {
@@ -84,18 +84,7 @@ const articleJsonLd: Record<string, unknown> = {
   ...(absoluteImageUrl ? { image: [absoluteImageUrl] } : {}),
 };
 
-const allPosts = await getAllPosts();
-const otherPosts = allPosts.filter((p) => p.slug !== post.slug);
-
-const sameRubricPosts = otherPosts.filter(
-  (p) => p.rubric.trim().toLowerCase() === rubric.trim().toLowerCase(),
-);
-
-const fallbackPosts = otherPosts.filter(
-  (p) => p.rubric.trim().toLowerCase() !== rubric.trim().toLowerCase(),
-);
-
-const relatedPosts = [...sameRubricPosts, ...fallbackPosts].slice(0, 3);
+const relatedPosts = await getRelatedPosts(post.slug, rubric, 3);
 
 if (!import.meta.env.DEV) {
   Astro.response.headers.set(
@@ -110,7 +99,7 @@ if (!import.meta.env.DEV) {
 <BaseLayout
   title={title}
   description={subtitle || post.plainText.slice(0, 160)}
-  image={rawCoverImage}
+  image={ogImageSource}
   imageAlt={imageCaption || title}
   type="article"
   publishedTime={isoDate}
@@ -147,13 +136,6 @@ if (!import.meta.env.DEV) {
         &bull; Опубликовано: {formattedDate} &bull; {readingTime}
       </div>
     </header>
-
-    {coverImageUrl && (
-      <figure class="post-hero">
-        <img src={coverImageUrl} alt={imageCaption || title} />
-        {imageCaption && <figcaption class="meta-label">{imageCaption}</figcaption>}
-      </figure>
-    )}
 
     <!-- Оглавление статьи (выводится при наличии 2 и более подзаголовков) -->
     {toc && toc.length >= 2 && (
@@ -455,21 +437,6 @@ if (!import.meta.env.DEV) {
     padding: 0.75rem 0;
   }
 
-  .post-hero {
-    margin-bottom: 2.5rem;
-  }
-
-  .post-hero img {
-    width: 100%;
-    max-height: 480px;
-    object-fit: cover;
-  }
-
-  .post-hero figcaption {
-    margin-top: 0.5rem;
-    text-align: right;
-  }
-
   /* Блок оглавления в редакционном стиле */
   .toc-box {
     margin-bottom: 2.5rem;
@@ -667,14 +634,6 @@ if (!import.meta.env.DEV) {
 
     .post-meta-top {
       justify-content: flex-start;
-    }
-
-    .post-hero {
-      margin-bottom: 1.75rem;
-    }
-
-    .post-hero img {
-      max-height: 260px;
     }
 
     .toc-box {

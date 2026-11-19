@@ -1,7 +1,4 @@
-import path from "node:path";
-import matter from "gray-matter";
-import fs from "node:fs/promises";
-import { watch, existsSync, readdirSync } from "node:fs";
+import { turso } from "@/lib/turso";
 import { marked } from "marked";
 import { toSlug, fromSlug } from "@/lib/translit";
 
@@ -21,20 +18,29 @@ export interface AuthorSummary {
   rubrics?: string[];
 }
 
+export interface PostImage {
+  id: number;
+  url: string;
+  alt?: string;
+  position: number;
+}
+
 export interface Post {
+  id: number;
   slug: string;
   source?: string;
   title: string;
   subtitle?: string;
   pubDate: Date;
-  authors?: string | AuthorSummary[];
+  authors: AuthorSummary[];
   rubric: string;
   genre?: string;
-  tags?: string | string[];
+  tags: string[];
   draft?: boolean;
   featured?: boolean;
   image?: string;
   imageCaption?: string;
+  images?: PostImage[];
   readingTime?: string;
   toc?: TocItem[];
   htmlContent: string;
@@ -59,45 +65,6 @@ export interface PaginatedResult<T> {
 
 export interface SearchResult extends Post {
   snippetHtml: string;
-}
-
-const ARTICLES_DIR = path.resolve(process.cwd(), "src/content/articles");
-//const POSTS_DIR = path.resolve(process.cwd(), "src/content/posts");
-
-let cachedPosts: Post[] | null = null;
-let cachedPostsMap: Map<string, Post> | null = null;
-let inFlightPromise: Promise<Post[]> | null = null;
-let isWatcherInitialized = false;
-
-export function invalidatePostsCache(): void {
-  cachedPosts = null;
-  cachedPostsMap = null;
-}
-
-function ensureWatcher(): void {
-  if (isWatcherInitialized || !existsSync(ARTICLES_DIR)) return;
-
-  try {
-    const watcher = watch(
-      ARTICLES_DIR,
-      { recursive: true, persistent: false },
-      (_eventType, filename) => {
-        if (!filename || filename.endsWith(".md")) {
-          invalidatePostsCache();
-        }
-      },
-    );
-
-    watcher.on("error", (err) => {
-      console.error("Ошибка наблюдателя директории статей:", err);
-      isWatcherInitialized = false;
-      invalidatePostsCache();
-    });
-
-    isWatcherInitialized = true;
-  } catch (err) {
-    console.error("Не удалось запустить рекурсивный fs.watch:", err);
-  }
 }
 
 // Вспомогательная функция для создания слага из строки
@@ -225,115 +192,196 @@ function buildHighlightedSnippet(post: Post, query: string): string {
   return safeText.replace(regex, "<mark>$1</mark>");
 }
 
-function getFilesRecursively(dir: string, ext: string = ".md"): Promise<string[]> {
-  const entries = readdirSync(dir, {
-    recursive: true,
-    withFileTypes: true,
-  });
-  return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(ext))
-    .map((entry) => path.join(entry.parentPath, entry.name));
+function splitOutsideParens(input: string, delimiter = ","): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let depth = 0;
+
+  for (const char of input) {
+    if (char === "(") {
+      depth += 1;
+      current += char;
+    } else if (char === ")") {
+      depth = Math.max(0, depth - 1);
+      current += char;
+    } else if (char === delimiter && depth === 0) {
+      if (current.trim()) {
+        parts.push(current.trim());
+      }
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  if (current.trim()) {
+    parts.push(current.trim());
+  }
+
+  return parts;
 }
 
-async function loadPostsFromDisk(): Promise<Post[]> {
+export function parseAuthors(authorsInput: unknown): AuthorSummary[] {
+  if (!authorsInput) return [];
+
+  if (Array.isArray(authorsInput)) {
+    return authorsInput.flatMap((item) => {
+      if (typeof item === "string") {
+        return parseAuthors(item);
+      }
+      if (item && typeof item === "object" && "name" in item) {
+        const name = String(item.name).trim();
+        if (!name) return [];
+        return [
+          {
+            name,
+            slug: "slug" in item && item.slug ? String(item.slug) : slugify(name),
+            role: "role" in item && item.role ? String(item.role).trim() : undefined,
+          },
+        ];
+      }
+      return [];
+    });
+  }
+
+  const rawString = String(authorsInput).trim();
+  if (!rawString) return [];
+
+  const authorsMap = new Map<string, AuthorSummary>();
+  const chunks = splitOutsideParens(rawString, ",");
+
+  for (const chunk of chunks) {
+    const parenMatch = chunk.match(/^([^(]+?)\s*\(([^)]*)\)\s*$/);
+
+    let name: string;
+    let role: string | undefined;
+
+    if (parenMatch) {
+      name = parenMatch[1].trim();
+      const insideParens = parenMatch[2].trim();
+      role = insideParens || undefined;
+    } else {
+      const openIdx = chunk.indexOf("(");
+      if (openIdx !== -1) {
+        name = chunk.slice(0, openIdx).trim();
+        const rest = chunk.slice(openIdx + 1).replace(/\)+$/, "").trim();
+        role = rest || undefined;
+      } else {
+        name = chunk.replace(/\)+$/, "").trim();
+        role = undefined;
+      }
+    }
+
+    if (!name) continue;
+
+    const slug = toSlug(name);
+    if (!slug) continue;
+
+    if (!authorsMap.has(slug)) {
+      authorsMap.set(slug, {
+        name,
+        slug,
+        role,
+      });
+    } else if (role && !authorsMap.get(slug)!.role) {
+      authorsMap.get(slug)!.role = role;
+    }
+  }
+
+  return Array.from(authorsMap.values());
+}
+
+/**
+ * Получение всех опубликованных постов из Turso с реляционными данными
+ */
+export async function getAllPosts(): Promise<Post[]> {
   try {
-    const mdFiles = await getFilesRecursively(ARTICLES_DIR, ".md");
+    const result = await turso.execute(`
+      SELECT
+        p.*,
+        r.name as rubric_name,
+        r.slug as rubric_slug,
+        (
+          SELECT json_group_array(json_object('name', a.name, 'slug', a.slug, 'role', a.role))
+          FROM posts_authors pa
+          JOIN authors a ON pa.author_id = a.id
+          WHERE pa.post_id = p.id
+        ) as authors_json,
+        (
+          SELECT json_group_array(json_object('name', t.name, 'slug', t.slug))
+          FROM posts_tags pt
+          JOIN tags t ON pt.tag_id = t.id
+          WHERE pt.post_id = p.id
+        ) as tags_json,
+        (
+          SELECT json_group_array(json_object('id', img.id, 'url', img.url, 'alt', img.alt, 'position', img.position))
+          FROM (
+            SELECT id, url, alt, position
+            FROM images
+            WHERE post_id = p.id
+            ORDER BY position ASC, id ASC
+          ) img
+        ) as images_json
+      FROM posts p
+      LEFT JOIN rubrics r ON p.rubric_id = r.id
+      WHERE p.draft = 0
+      ORDER BY p.pub_date DESC, p.date DESC;
+    `);
 
-    const rawPosts = await Promise.all(
-      mdFiles.map(async (filePath) => {
-        const relativePath = path.relative(ARTICLES_DIR, filePath);
-        const slug = relativePath.replace(/\.md$/, "").replace(/\\/g, "/");
-        const rawFile = await fs.readFile(filePath, "utf-8");
-        const { data, content } = matter(rawFile);
+    return result.rows.map((row: any) => {
+      const authors: AuthorSummary[] = row.authors_json ? JSON.parse(row.authors_json) : [];
+      const tagsData = row.tags_json ? JSON.parse(row.tags_json) : [];
+      const tags: string[] = tagsData.map((t: any) => t.name || t);
 
-        const isDraft = Boolean(data.draft);
-        if (isDraft && import.meta.env.PROD) {
-          return null;
-        }
+      const imagesRaw = row.images_json ? JSON.parse(row.images_json) : [];
+      const images: PostImage[] = imagesRaw
+        .filter((img: any) => img && img.url)
+        .map((img: any) => ({
+          id: Number(img.id),
+          url: String(img.url),
+          alt: img.alt ? String(img.alt) : undefined,
+          position: Number(img.position ?? 0),
+        }));
 
-        const plainText = stripMarkdown(content);
-        const parsedHtml = await marked.parse(content);
-        const { html, toc } = extractTocAndInjectIds(parsedHtml);
+      const rawHtml = row.htmlContent || (row.content ? (marked.parse(row.content) as string) : "");
+      const { html, toc } = extractTocAndInjectIds(rawHtml);
+      const plainText = stripMarkdown(row.content || "");
 
-        const authorsStr = (data.authors ?? data.author ?? "").trim();
-        const rubricStr = (data.rubric ?? data.category ?? "").trim();
-        const dateValue = data.date ?? data.pubDate;
-        const pubDate = dateValue ? new Date(dateValue) : new Date();
-
-        let rawTags: string[] = [];
-        if (Array.isArray(data.tags)) {
-          rawTags = data.tags.map((t) => (!!t ? String(t).trim() : null)).filter((f) => !!f);
-        } else if (typeof data.tags === "string" && data.tags.trim()) {
-          rawTags = data.tags
-            .split(",")
-            .map((t) => t.trim())
-            .filter(Boolean);
-        }
-
-        return {
-          slug,
-          source: data.source ? String(data.source) : undefined,
-          title: data.title ?? "Без названия",
-          subtitle: data.subtitle ? String(data.subtitle) : undefined,
-          pubDate,
-          authors: parseAuthors(authorsStr),
-          rubric: rubricStr,
-          genre: data.genre ? String(data.genre) : undefined,
-          tags: rawTags,
-          draft: isDraft,
-          featured: Boolean(data.featured),
-          image: data.image,
-          imageCaption: data.imageCaption,
-          readingTime: calculateReadingTime(plainText, data.readingTime),
-          toc,
-          htmlContent: html,
-          plainText,
-        } satisfies Post;
-      }),
-    );
-
-    const posts = rawPosts.filter((p): p is Post => p !== null);
-    const sorted = posts.sort((a, b) => b.pubDate.valueOf() - a.pubDate.valueOf());
-
-    cachedPosts = sorted;
-    cachedPostsMap = new Map(sorted.map((post) => [post.slug, post]));
-
-    return sorted;
+      return {
+        id: Number(row.id),
+        slug: row.slug,
+        source: row.source || undefined,
+        title: row.title,
+        subtitle: row.subtitle || undefined,
+        pubDate: new Date(row.pub_date || row.date),
+        authors,
+        rubric: row.rubric_name || "",
+        genre: row.genre || undefined,
+        tags,
+        draft: Boolean(row.draft),
+        featured: Boolean(row.featured),
+        image: row.image || images[0]?.url || undefined,
+        imageCaption: row.imageCaption || images[0]?.alt || undefined,
+        images,
+        readingTime: row.reading_time || calculateReadingTime(plainText),
+        toc,
+        htmlContent: html,
+        plainText,
+      } satisfies Post;
+    });
   } catch (error) {
-    console.error("Ошибка чтения коллекции articles:", error);
+    console.error("Ошибка получения постов из Turso:", error);
     return [];
   }
 }
 
-export async function getAllPosts(): Promise<Post[]> {
-  ensureWatcher();
-
-  if (cachedPosts) {
-    return cachedPosts;
-  }
-
-  if (!inFlightPromise) {
-    inFlightPromise = loadPostsFromDisk().finally(() => {
-      inFlightPromise = null;
-    });
-  }
-
-  return inFlightPromise;
-}
-
 export async function getPostBySlug(slug: string): Promise<Post | null> {
   const safeSlug = slug.replace(/^\/+/, "").replace(/\/+$/, "");
-  ensureWatcher();
-
-  if (cachedPostsMap) {
-    return cachedPostsMap.get(safeSlug) ?? null;
-  }
-
-  await getAllPosts();
-  return cachedPostsMap?.get(safeSlug) ?? null;
+  const posts = await getAllPosts();
+  return posts.find((p) => p.slug === safeSlug) ?? null;
 }
 
-export function getAllAuthors(posts): AuthorSummary[] {
+export function getAllAuthors(posts: Post[]): AuthorSummary[] {
   const map = new Map<string, AuthorSummary>();
 
   for (const post of posts) {
@@ -348,9 +396,9 @@ export function getAllAuthors(posts): AuthorSummary[] {
           ...author,
         });
       } else {
-        existing.postCount += 1;
-        existing.rubrics.add(post.rubric.trim());
-        if (post.pubDate > existing.latestPostDate) {
+        existing.postCount = (existing.postCount || 1) + 1;
+        existing.rubrics?.add(post.rubric.trim());
+        if (existing.latestPostDate && post.pubDate > existing.latestPostDate) {
           existing.latestPostDate = post.pubDate;
         }
       }
@@ -360,9 +408,9 @@ export function getAllAuthors(posts): AuthorSummary[] {
   return Array.from(map.values())
     .map((entry) => ({
       ...entry,
-      rubrics: Array.from(entry.rubrics),
+      rubrics: Array.from(entry.rubrics || []),
     }))
-    .sort((a, b) => b.postCount - a.postCount || a.name.localeCompare(b.name, "ru"));
+    .sort((a, b) => (b.postCount || 0) - (a.postCount || 0) || a.name.localeCompare(b.name, "ru"));
 }
 
 export async function getAuthorBySlug(
@@ -370,10 +418,10 @@ export async function getAuthorBySlug(
 ): Promise<{ author?: AuthorSummary; posts: Post[] }> {
   const allPosts = await getAllPosts();
   const authors = getAllAuthors(allPosts);
-  const author = authors.find((a) => a.slug == authorSlug);
+  const author = authors.find((a) => a.slug === authorSlug);
   return {
     author,
-    posts: authors ? allPosts.filter((p) => p.authors.find((a) => a.slug == authorSlug)) : [],
+    posts: author ? allPosts.filter((p) => p.authors.some((a) => a.slug === authorSlug)) : [],
   };
 }
 
@@ -400,30 +448,29 @@ export async function getAllTags(): Promise<TagSummary[]> {
 export async function getPostsByTag(
   tagSlug: string,
 ): Promise<{ tagName: string; posts: Post[] } | null> {
-  const safeSlug = path.basename(tagSlug);
+  const safeSlug = slugifyTag(tagSlug);
   const posts = await getAllPosts();
 
-  const matchedPosts = posts.filter((post) =>
-    Array.isArray(post.tags)
-      ? post.tags.some((t) => slugifyTag(t) === safeSlug)
-      : post.tags.includes(safeSlug),
-  );
+  const matchedPosts = posts.filter((post) => post.tags.some((t) => slugifyTag(t) === safeSlug));
 
-  if (matchedPosts.length == 0) return null;
+  if (matchedPosts.length === 0) return null;
 
-  const samplePost = matchedPosts.find((p) => p.tags.some((t) => slugifyTag(t) === safeSlug));
-  const tagName = samplePost?.tags.find((t) => slugifyTag(t) === safeSlug) ?? safeSlug;
+  const sampleTag = matchedPosts.flatMap((p) => p.tags).find((t) => slugifyTag(t) === safeSlug);
+  const tagName = sampleTag || safeSlug;
 
   return { tagName, posts: matchedPosts };
 }
 
-/**
- * Возвращает список всех уникальных рубрик из опубликованных постов
- */
 export async function getAllRubrics(): Promise<string[]> {
-  const posts = await getAllPosts();
-  const rubrics = new Set(posts.map((p) => p.rubric).filter(Boolean));
-  return Array.from(rubrics).sort((a, b) => a.localeCompare(b, "ru"));
+  try {
+    const result = await turso.execute("SELECT name FROM rubrics ORDER BY name ASC;");
+    return result.rows.map((row: any) => row.name);
+  } catch (err) {
+    console.error("Ошибка получения рубрик из Turso:", err);
+    const posts = await getAllPosts();
+    const rubrics = new Set(posts.map((p) => p.rubric).filter(Boolean));
+    return Array.from(rubrics).sort((a, b) => a.localeCompare(b, "ru"));
+  }
 }
 
 export function paginateItems<T>(
@@ -455,35 +502,56 @@ export async function searchPosts(query: string): Promise<SearchResult[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];
 
-  const lowerQuery = trimmed.toLowerCase();
-  const allPosts = await getAllPosts();
+  try {
+    const result = await turso.execute({
+      sql: `
+        SELECT p.slug
+        FROM posts_fts fts
+        JOIN posts p ON fts.rowid = p.id
+        WHERE posts_fts MATCH ? AND p.draft = 0
+        ORDER BY rank;
+      `,
+      args: [trimmed],
+    });
 
-  return allPosts
-    .filter((post) => {
-      const searchable = [
-        post.title,
-        post.subtitle,
-        post.authors,
-        post.rubric,
-        post.genre,
-        ...post.tags,
-        post.plainText,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+    const matchedSlugs = new Set(result.rows.map((r: any) => r.slug));
+    const allPosts = await getAllPosts();
 
-      return searchable.includes(lowerQuery);
-    })
-    .map((post) => ({
-      ...post,
-      snippetHtml: buildHighlightedSnippet(post, trimmed),
-    }));
+    return allPosts
+      .filter((post) => matchedSlugs.has(post.slug))
+      .map((post) => ({
+        ...post,
+        snippetHtml: buildHighlightedSnippet(post, trimmed),
+      }));
+  } catch (err) {
+    console.warn("FTS5 поиск недоступен, выполняем фоллбек по памяти:", err);
+    const lowerQuery = trimmed.toLowerCase();
+    const allPosts = await getAllPosts();
+
+    return allPosts
+      .filter((post) => {
+        const searchable = [
+          post.title,
+          post.subtitle,
+          JSON.stringify(post.authors),
+          post.rubric,
+          post.genre,
+          ...post.tags,
+          post.plainText,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return searchable.includes(lowerQuery);
+      })
+      .map((post) => ({
+        ...post,
+        snippetHtml: buildHighlightedSnippet(post, trimmed),
+      }));
+  }
 }
 
-/**
- * Склоняет существительное в зависимости от числительного (1 статья, 2 статьи, 5 статей)
- */
 export function pluralizeRu(
   count: number,
   forms: [one: string, few: string, many: string],
@@ -499,26 +567,4 @@ export function pluralizeRu(
 
 export function getPostWord(count: number): string {
   return pluralizeRu(count, ["статья", "статьи", "статей"]);
-}
-
-export function parseAuthors(authors: string): { name: string; role: string; slug: string }[] {
-  const authorsObj: Record<string, { name: string; role: string; slug: string }> = {};
-  const matrix = authors.split(",").map((m) =>
-    m
-      .trim()
-      .split("(")
-      .map((a) => a.replaceAll(")", "").trim())
-      .filter((f) => !!f),
-  );
-  for (let i = 0; i < matrix.length; i++) {
-    if (matrix[i].length < 1) continue;
-    const [name, role] = matrix[i];
-    const slug = toSlug(name);
-    authorsObj[slug] = {
-      name,
-      role,
-      slug,
-    };
-  }
-  return Object.values(authorsObj);
 }

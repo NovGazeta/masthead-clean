@@ -1,0 +1,107 @@
+---
+import { getAllPosts } from "@/lib/posts";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import ArticleCard from "@/components/ArticleCard.astro";
+import Pagination from "@/components/Pagination.astro";
+
+// Читаем параметр страницы из пути ([...page])
+const { page } = Astro.params;
+let currentPage = 1;
+
+if (page) {
+  const parsed = parseInt(page, 10);
+  if (!isNaN(parsed) && parsed > 0) {
+    currentPage = parsed;
+  } else {
+    // Если подан некорректный нечисловой путь — 404
+    return new Response(null, { status: 404 });
+  }
+}
+
+const ARTICLES_PER_PAGE = 12;
+
+const allPosts = await getAllPosts();
+const totalPosts = allPosts.length;
+const totalPages = Math.max(1, Math.ceil(totalPosts / ARTICLES_PER_PAGE));
+
+// Если запросили несуществующую страницу за пределами диапазона — 404
+if (currentPage > totalPages) {
+  return new Response(null, { status: 404 });
+}
+
+const startIndex = (currentPage - 1) * ARTICLES_PER_PAGE;
+const paginatedPosts = allPosts.slice(startIndex, startIndex + ARTICLES_PER_PAGE);
+
+const featuredPost = currentPage === 1 && paginatedPosts.length > 0 ? paginatedPosts[0] : null;
+const regularPosts = currentPage === 1 ? paginatedPosts.slice(1) : paginatedPosts;
+
+if (!import.meta.env.DEV)
+  Astro.response.headers.set(
+    "Cache-Control",
+    "public, s-maxage=3600, stale-while-revalidate=86400",
+  );
+else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-while-revalidate=1");
+---
+
+<BaseLayout title={currentPage > 1 ? `Статьи — Страница ${currentPage}` : "Главная страница"}>
+  <section class="feed-section">
+    {paginatedPosts.length === 0 ? (
+      <div class="empty-state">
+        <p>Пока нет ни одной опубликованной статьи.</p>
+      </div>
+    ) : (
+      <>
+        {featuredPost && (
+          <div class="featured-wrapper">
+            <ArticleCard post={featuredPost} featured={true} />
+          </div>
+        )}
+
+        <div class="articles-grid">
+          {regularPosts.map((post) => (
+            <ArticleCard post={post} />
+          ))}
+        </div>
+
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          basePath=""
+          ariaLabel="Пагинация по страницам"
+        />
+      </>
+    )}
+  </section>
+</BaseLayout>
+
+<style>
+  .feed-section {
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  .featured-wrapper {
+    margin-bottom: 2.5rem;
+    padding-bottom: 2.5rem;
+  }
+
+  .articles-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2.5rem;
+  }
+
+  .empty-state {
+    padding: 3rem 0;
+    text-align: center;
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+
+  @media (max-width: 768px) {
+    .articles-grid {
+      grid-template-columns: 1fr;
+      gap: 2rem;
+    }
+  }
+</style>

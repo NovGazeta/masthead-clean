@@ -12,7 +12,6 @@ export function resolveAssetUrl(url: string | undefined | null): string {
   const trimmed = url.trim();
   if (!trimmed) return "";
 
-  // Внешние ссылки, protocol-relative и data URI оставляем как есть
   if (/^(https?:\/\/|\/\/|data:|blob:)/i.test(trimmed)) {
     return trimmed;
   }
@@ -27,9 +26,6 @@ export function resolveAssetUrl(url: string | undefined | null): string {
   return `${baseUrl}${normalizedPath}`;
 }
 
-/**
- * Подставляет префикс CDN в src тегов <img> внутри уже готового HTML статьи
- */
 export function applyAssetBaseUrlToHtml(html: string): string {
   const baseUrl = getAssetsBaseUrl();
   if (!baseUrl || !html) return html;
@@ -49,7 +45,6 @@ export function toAbsoluteAssetUrl(
   const resolved = resolveAssetUrl(url);
   if (!resolved) return "";
 
-  // Уже абсолютный URL или data/blob URI
   if (/^(https?:\/\/|data:|blob:)/i.test(resolved)) {
     return resolved;
   }
