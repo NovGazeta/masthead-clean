@@ -1,6 +1,6 @@
-import { turso } from "@/lib/turso";
 import { marked } from "marked";
 import { toSlug, fromSlug } from "@/lib/translit";
+import { turso } from "@/lib/turso";
 
 export interface TocItem {
   id: string;
@@ -288,24 +288,43 @@ export function parseAuthors(authorsInput: unknown): AuthorSummary[] {
   const chunks = splitOutsideParens(rawString, ",");
 
   for (const chunk of chunks) {
-    const parenMatch = chunk.match(/^([^(]+?)\s*\(([^)]*)\)\s*$/);
+    const cleaned = chunk.replace(/\s+/g, " ").trim();
+    if (!cleaned) continue;
+
+    const parenMatch = cleaned.match(/^([^(]+?)\s*\(([^)]*)\)\s*$/);
 
     let name: string;
     let role: string | undefined;
 
     if (parenMatch) {
-      name = parenMatch[1].trim();
+      const beforeParen = parenMatch[1].trim();
       const insideParens = parenMatch[2].trim();
-      role = insideParens || undefined;
+      const wordsBefore = beforeParen.split(/\s+/).filter(Boolean);
+
+      if (wordsBefore.length <= 1) {
+        name = [beforeParen, insideParens].filter(Boolean).join(" ").trim();
+        role = undefined;
+      } else {
+        name = beforeParen;
+        role = insideParens || undefined;
+      }
     } else {
       const openIdx = chunk.indexOf("(");
       if (openIdx !== -1) {
-        name = chunk.slice(0, openIdx).trim();
+        const beforeOpen = chunk.slice(0, openIdx).trim();
         const rest = chunk
           .slice(openIdx + 1)
           .replace(/\)+$/, "")
           .trim();
-        role = rest || undefined;
+        const wordsBefore = beforeOpen.split(/\s+/).filter(Boolean);
+
+        if (wordsBefore.length <= 1) {
+          name = [beforeOpen, rest].filter(Boolean).join(" ").trim();
+          role = undefined;
+        } else {
+          name = beforeOpen;
+          role = rest || undefined;
+        }
       } else {
         name = chunk.replace(/\)+$/, "").trim();
         role = undefined;
