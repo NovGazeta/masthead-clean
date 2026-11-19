@@ -435,13 +435,16 @@ function buildPostFilterWhere(options: Omit<PaginatedPostsOptions, "page" | "per
 }
 
 export async function getPostBySlug(slug: string): Promise<Post | null> {
-  const safeSlug = slug.replace(/^\/+/, "").replace(/\/+$/, "");
-  if (!safeSlug) return null;
+  const cleanSlug = decodeURIComponent(slug).trim().replace(/^\/+|\/+$/g, "");
+  if (!cleanSlug) return null;
+
+  const withSlash = `/${cleanSlug}`;
+  const withoutSlash = cleanSlug;
 
   try {
     const result = await turso.execute({
-      sql: `${BASE_POST_SELECT} WHERE p.slug = ? AND p.draft = 0 LIMIT 1;`,
-      args: [safeSlug],
+      sql: `${BASE_POST_SELECT} WHERE p.slug IN (?, ?) AND p.draft = 0 LIMIT 1;`,
+      args: [withSlash, withoutSlash],
     });
 
     const row = result.rows[0];
