@@ -1,9 +1,8 @@
 ---
-import { getAllPosts, type Post } from "@/lib/posts";
+import { turso } from "@/lib/turso";
+import { getPaginatedPosts, type Post } from "@/lib/posts";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import Pagination from "@/components/Pagination.astro";
-
-const posts = await getAllPosts();
 
 const MONTH_NAMES = [
   "Январь",
@@ -26,12 +25,19 @@ interface MonthGroup {
   posts: Post[];
 }
 
-// 1. Собираем все доступные года по убыванию
-const allYears = Array.from(new Set(posts.map((p) => p.pubDate.getFullYear()))).sort(
-  (a, b) => b - a,
-);
+// 1. Получаем список доступных годов по убыванию напрямую из БД
+const yearsRes = await turso.execute(`
+  SELECT DISTINCT CAST(strftime('%Y', COALESCE(pub_date, date)) AS INTEGER) as year
+  FROM posts
+  WHERE draft = 0
+  ORDER BY year DESC;
+`);
 
-const defaultYear = allYears[0];
+const allYears = yearsRes.rows
+  .map((r: any) => Number(r.year))
+  .filter((y) => Number.isFinite(y) && y > 0);
+
+const defaultYear = allYears[0] ?? new Date().getFullYear();
 
 // Парсим параметры из URL сегментов ([...slug])
 // Ожидаемые варианты: без параметров, ["2026"], ["2026", "2"]
@@ -57,16 +63,71 @@ if (segments.length > 1 && segments[1]) {
 
 const POSTS_PER_PAGE = 20;
 
-// Фильтруем статьи строго по выбранному году
-const yearPosts = posts.filter((p) => p.pubDate.getFullYear() === selectedYear);
+// Запрашиваем только посты выбранного года и считаем их количество в SQL
+const yearStartIso = `${selectedYear}-01-01T00:00:00.000Z`;
+const yearEndIso = `${selectedYear + 1}-01-01T00:00:00.000Z`;
 
-const totalPostsInYear = yearPosts.length;
+const yearCountRes = await turso.execute({
+  sql: `
+    SELECT COUNT(*) as total
+    FROM posts
+    WHERE draft = 0
+      AND COALESCE(pub_date, date) >= ?
+      AND COALESCE(pub_date, date) < ?;
+  `,
+  args: [yearStartIso, yearEndIso],
+});
+
+const totalPostsInYear = Number(yearCountRes.rows[0]?.total ?? 0);
 const totalPages = Math.max(1, Math.ceil(totalPostsInYear / POSTS_PER_PAGE));
 const safePage = Math.min(currentPage, totalPages);
+const offset = (safePage - 1) * POSTS_PER_PAGE;
 
-// Пагинация среза
-const startIndex = (safePage - 1) * POSTS_PER_PAGE;
-const paginatedPosts = yearPosts.slice(startIndex, startIndex + POSTS_PER_PAGE);
+const yearSliceRes = await turso.execute({
+  sql: `
+    SELECT
+      p.id,
+      p.slug,
+      p.title,
+      p.subtitle,
+      p.pub_date,
+      p.date,
+      p.reading_time,
+      p.content,
+      r.name as rubric_name
+    FROM posts p
+    LEFT JOIN rubrics r ON p.rubric_id = r.id
+    WHERE p.draft = 0
+      AND COALESCE(p.pub_date, p.date) >= ?
+      AND COALESCE(p.pub_date, p.date) < ?
+    ORDER BY COALESCE(p.pub_date, p.date) DESC
+    LIMIT ? OFFSET ?;
+  `,
+  args: [yearStartIso, yearEndIso, POSTS_PER_PAGE, offset],
+});
+
+const paginatedPosts: Post[] = yearSliceRes.rows.map((row: any) => {
+  const plain = String(row.content || "")
+    .replace(/[#>*_`~\[\]()!-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return {
+    id: Number(row.id),
+    slug: String(row.slug),
+    title: String(row.title),
+    subtitle: row.subtitle ? String(row.subtitle) : undefined,
+    pubDate: new Date(row.pub_date || row.date),
+    authors: [],
+    rubric: row.rubric_name ? String(row.rubric_name) : "",
+    tags: [],
+    readingTime: row.reading_time
+      ? String(row.reading_time)
+      : `${Math.max(1, Math.ceil(plain.split(/\s+/).filter(Boolean).length / 180))} мин чтения`,
+    htmlContent: "",
+    plainText: plain,
+  };
+});
 
 // Группируем по месяцам
 const monthMap = new Map<number, Post[]>();
@@ -168,6 +229,7 @@ else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-whil
                   {monthGroup.posts.map((post) => {
                     const day = String(post.pubDate.getDate()).padStart(2, "0");
                     const monthNum = String(post.pubDate.getMonth() + 1).padStart(2, "0");
+                    const excerpt = post.subtitle || post.plainText;
 
                     return (
                       <li class="issue-row">
@@ -181,7 +243,7 @@ else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-whil
                               {post.title}
                             </a>
                           </div>
-                          {post.description && <p class="issue-excerpt">{post.description}</p>}
+                          {excerpt && <p class="issue-excerpt">{excerpt}</p>}
                         </div>
 
                         <div class="issue-meta">
