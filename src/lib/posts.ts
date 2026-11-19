@@ -301,7 +301,10 @@ export function parseAuthors(authorsInput: unknown): AuthorSummary[] {
       const openIdx = chunk.indexOf("(");
       if (openIdx !== -1) {
         name = chunk.slice(0, openIdx).trim();
-        const rest = chunk.slice(openIdx + 1).replace(/\)+$/, "").trim();
+        const rest = chunk
+          .slice(openIdx + 1)
+          .replace(/\)+$/, "")
+          .trim();
         role = rest || undefined;
       } else {
         name = chunk.replace(/\)+$/, "").trim();
@@ -606,9 +609,7 @@ export async function getAuthorBySlug(authorSlug: string): Promise<AuthorSummary
   if (!raw) return null;
 
   const normalizedSlug = slugifyAuthor(raw);
-  const candidates = Array.from(
-    new Set([raw, raw.toLowerCase(), normalizedSlug].filter(Boolean)),
-  );
+  const candidates = Array.from(new Set([raw, raw.toLowerCase(), normalizedSlug].filter(Boolean)));
 
   try {
     const placeholders = candidates.map(() => "?").join(", ");

@@ -1,7 +1,5 @@
 const RAW_ASSETS_BASE_URL =
-  import.meta.env.PUBLIC_ASSETS_BASE_URL ||
-  process.env.PUBLIC_ASSETS_BASE_URL ||
-  "";
+  import.meta.env.PUBLIC_ASSETS_BASE_URL || process.env.PUBLIC_ASSETS_BASE_URL || "";
 
 export function getAssetsBaseUrl(): string {
   return RAW_ASSETS_BASE_URL.trim().replace(/\/+$/, "");

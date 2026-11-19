@@ -1,9 +1,9 @@
 ---
-import { getAllPosts, getPostWord, type Post } from "@/lib/posts";
+import { turso } from "@/lib/turso";
+import { getPostWord, type Post } from "@/lib/posts";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import Pagination from "@/components/Pagination.astro";
 
-const url = Astro.url;
 const { slug } = Astro.params;
 
 // Разбираем сегменты пути: /search/[query]/[page]
@@ -98,12 +98,31 @@ function buildSnippet(plainText: string, terms: string[], maxLength = 220): stri
   return highlightTerms(slice, terms);
 }
 
+function mapSearchRow(row: any): Post {
+  const plainBody = stripMarkdown(String(row.content || ""));
+  const words = plainBody.split(/\s+/).filter(Boolean).length;
+
+  return {
+    id: Number(row.id),
+    slug: String(row.slug),
+    title: String(row.title || "Без названия"),
+    subtitle: row.subtitle ? String(row.subtitle) : undefined,
+    pubDate: new Date(row.pub_date || row.date),
+    authors: [],
+    rubric: row.rubric_name ? String(row.rubric_name) : "",
+    tags: [],
+    readingTime: row.reading_time
+      ? String(row.reading_time)
+      : `${Math.max(1, Math.ceil(words / 180))} мин чтения`,
+    htmlContent: "",
+    plainText: plainBody,
+  };
+}
+
 let allMatches: SearchResult[] = [];
 
 try {
-  const allPosts = await getAllPosts();
-
-  if (query.length > 0 && allPosts && allPosts.length > 0) {
+  if (query.length > 0) {
     const terms = Array.from(
       new Set(
         query
@@ -114,35 +133,99 @@ try {
       ),
     );
 
-    for (const post of allPosts) {
-      const rawBody = (post as any).content || (post as any).body || "";
-      const plainBody = stripMarkdown(rawBody);
+    let rows: any[] = [];
+    let usedFts = false;
 
-      const authorsList = Array.isArray(post.authors) ? post.authors : [];
-      const tagsList = Array.isArray(post.tags) ? post.tags : [];
+    try {
+      const ftsQuery = terms.map((t) => `"${t.replace(/"/g, '""')}"*`).join(" AND ");
+      const ftsRes = await turso.execute({
+        sql: `
+          SELECT
+            p.id,
+            p.slug,
+            p.title,
+            p.subtitle,
+            p.pub_date,
+            p.date,
+            p.reading_time,
+            p.content,
+            r.name as rubric_name
+          FROM posts_fts fts
+          JOIN posts p ON fts.rowid = p.id
+          LEFT JOIN rubrics r ON p.rubric_id = r.id
+          WHERE posts_fts MATCH ? AND p.draft = 0
+          ORDER BY rank, COALESCE(p.pub_date, p.date) DESC
+          LIMIT 200;
+        `,
+        args: [ftsQuery],
+      });
+      rows = ftsRes.rows as any[];
+      usedFts = true;
+    } catch {
+      usedFts = false;
+    }
 
-      const searchable = [
-        post.title || "",
-        post.subtitle || "",
-        post.description || "",
-        post.rubric || "",
-        ...authorsList,
-        ...tagsList,
-        plainBody,
-      ]
-        .join(" ")
-        .toLowerCase();
+    if (!usedFts || rows.length === 0) {
+      const termConditions = terms.map(
+        () => `
+          (
+            LOWER(COALESCE(p.title, '')) LIKE ?
+            OR LOWER(COALESCE(p.subtitle, '')) LIKE ?
+            OR LOWER(COALESCE(p.content, '')) LIKE ?
+            OR LOWER(COALESCE(r.name, '')) LIKE ?
+            OR EXISTS (
+              SELECT 1 FROM posts_authors pa
+              JOIN authors a ON pa.author_id = a.id
+              WHERE pa.post_id = p.id AND LOWER(a.name) LIKE ?
+            )
+            OR EXISTS (
+              SELECT 1 FROM posts_tags pt
+              JOIN tags t ON pt.tag_id = t.id
+              WHERE pt.post_id = p.id AND LOWER(t.name) LIKE ?
+            )
+          )
+        `,
+      );
 
-      const isMatch = terms.every((term) => searchable.includes(term));
-
-      if (isMatch) {
-        const sourceText = post.subtitle || post.description || plainBody || post.title || "";
-        allMatches.push({
-          post,
-          titleHtml: highlightTerms(post.title || "Без названия", terms),
-          snippetHtml: buildSnippet(sourceText, terms),
-        });
+      const likeArgs: string[] = [];
+      for (const term of terms) {
+        const pattern = `%${term}%`;
+        likeArgs.push(pattern, pattern, pattern, pattern, pattern, pattern);
       }
+
+      const likeRes = await turso.execute({
+        sql: `
+          SELECT DISTINCT
+            p.id,
+            p.slug,
+            p.title,
+            p.subtitle,
+            p.pub_date,
+            p.date,
+            p.reading_time,
+            p.content,
+            r.name as rubric_name
+          FROM posts p
+          LEFT JOIN rubrics r ON p.rubric_id = r.id
+          WHERE p.draft = 0
+            AND ${termConditions.join(" AND ")}
+          ORDER BY COALESCE(p.pub_date, p.date) DESC
+          LIMIT 200;
+        `,
+        args: likeArgs,
+      });
+
+      rows = likeRes.rows as any[];
+    }
+
+    for (const row of rows) {
+      const post = mapSearchRow(row);
+      const sourceText = post.subtitle || post.plainText || post.title || "";
+      allMatches.push({
+        post,
+        titleHtml: highlightTerms(post.title, terms),
+        snippetHtml: buildSnippet(sourceText, terms),
+      });
     }
   }
 } catch (e) {

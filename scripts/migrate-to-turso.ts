@@ -216,7 +216,10 @@ async function migrate() {
         const tagsList: string[] = Array.isArray(data.tags)
           ? data.tags
           : typeof data.tags === "string"
-            ? data.tags.split(",").map((t) => t.trim()).filter(Boolean)
+            ? data.tags
+                .split(",")
+                .map((t) => t.trim())
+                .filter(Boolean)
             : [];
 
         for (const tagName of tagsList) {

@@ -1,9 +1,11 @@
 import type { APIRoute } from "astro";
-import { getAllPosts, getAllRubrics } from "@/lib/posts";
-import { toSlug } from "@/lib/translit";
+import { turso } from "@/lib/turso";
+import { slugify } from "@/lib/posts";
 
-function escapeXml(str: string): string {
-  return str
+const ARTICLES_PER_PAGE = 12;
+
+function escapeXml(value: string): string {
+  return value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -11,96 +13,74 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
-const categories = await getAllRubrics();
-
 export const GET: APIRoute = async ({ site, url }) => {
-  const posts = await getAllPosts();
   const baseUrl = (site?.toString() || url.origin).replace(/\/$/, "");
 
-  // Дата последнего обновления сайта (по самой свежей статье)
-  const latestPostDate = posts[0]?.pubDate
-    ? posts[0].pubDate.toISOString()
-    : new Date().toISOString();
+  const staticSections = ["/", "/authors", "/archive", "/search"];
+  const sectionUrls = new Set<string>(staticSections.map((path) => `${baseUrl}${path}`));
 
-  // Статические и служебные разделы
-  const staticUrls = [
-    {
-      loc: `${baseUrl}/`,
-      lastmod: latestPostDate,
-      changefreq: "daily",
-      priority: "1.0",
-    },
-    {
-      loc: `${baseUrl}/archive`,
-      lastmod: latestPostDate,
-      changefreq: "weekly",
-      priority: "0.9",
-    },
-    {
-      loc: `${baseUrl}/tags`,
-      lastmod: latestPostDate,
-      changefreq: "weekly",
-      priority: "0.8",
-    },
-    {
-      loc: `${baseUrl}/authors`,
-      lastmod: latestPostDate,
-      changefreq: "weekly",
-      priority: "0.7",
-    },
-    {
-      loc: `${baseUrl}/about`,
-      lastmod: latestPostDate,
-      changefreq: "monthly",
-      priority: "0.6",
-    },
-    {
-      loc: `${baseUrl}/search`,
-      lastmod: latestPostDate,
-      changefreq: "weekly",
-      priority: "0.5",
-    },
-  ];
+  try {
+    const rubricsRes = await turso.execute(`
+      SELECT
+        r.name,
+        r.slug,
+        COUNT(p.id) as post_count
+      FROM rubrics r
+      LEFT JOIN posts p ON p.rubric_id = r.id AND p.draft = 0
+      GROUP BY r.id, r.name, r.slug
+      ORDER BY r.name COLLATE NOCASE ASC;
+    `);
 
-  // Страницы рубрик
-  const categoryUrls = categories.map((name) => ({
-    loc: `${baseUrl}/category/${toSlug(name)}`,
-    lastmod: latestPostDate,
-    changefreq: "weekly",
-    priority: "0.8",
-  }));
+    for (const row of rubricsRes.rows as any[]) {
+      const rubricSlug = String(row.slug || "").trim() || slugify(String(row.name || ""));
+      if (!rubricSlug) continue;
 
-  // Динамические страницы статей
-  const postUrls = posts.map((post) => ({
-    loc: `${baseUrl}/articles/${encodeURIComponent(post.slug)}`,
-    lastmod: post.pubDate.toISOString(),
-    changefreq: "monthly",
-    priority: "0.9",
-  }));
+      const baseRubricUrl = `${baseUrl}/category/${encodeURIComponent(rubricSlug)}`;
+      sectionUrls.add(baseRubricUrl);
 
-  const allUrls = [...staticUrls, ...categoryUrls, ...postUrls];
+      const totalPosts = Number(row.post_count ?? 0);
+      const totalPages = Math.max(1, Math.ceil(totalPosts / ARTICLES_PER_PAGE));
 
-  const urlsXml = allUrls
-    .map(
-      (item) => `
-  <url>
-    <loc>${escapeXml(item.loc)}</loc>
-    <lastmod>${item.lastmod}</lastmod>
-    <changefreq>${item.changefreq}</changefreq>
-    <priority>${item.priority}</priority>
-  </url>`,
-    )
-    .join("");
+      for (let page = 2; page <= totalPages; page++) {
+        sectionUrls.add(`${baseRubricUrl}/${page}`);
+      }
+    }
+  } catch (error) {
+    console.error("Ошибка получения рубрик из Turso для sitemap.xml:", error);
+  }
 
-  const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urlsXml}
-</urlset>`;
+  try {
+    const yearsRes = await turso.execute(`
+      SELECT DISTINCT CAST(strftime('%Y', COALESCE(pub_date, date)) AS INTEGER) as year
+      FROM posts
+      WHERE draft = 0
+      ORDER BY year DESC;
+    `);
 
-  return new Response(sitemapXml.trim(), {
+    for (const row of yearsRes.rows as any[]) {
+      const year = Number(row.year);
+      if (Number.isFinite(year) && year > 0) {
+        sectionUrls.add(`${baseUrl}/archive/${year}`);
+      }
+    }
+  } catch (error) {
+    console.error("Ошибка получения годов архива для sitemap.xml:", error);
+  }
+
+  const xml = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...Array.from(sectionUrls).map((loc) => `  <url>\n    <loc>${escapeXml(loc)}</loc>\n  </url>`),
+    "</urlset>",
+  ].join("\n");
+
+  return new Response(xml, {
     status: 200,
     headers: {
       "Content-Type": "application/xml; charset=utf-8",
-      "Cache-Control": "public, max-age=300",
+      "Cache-Control": import.meta.env.DEV
+        ? "public, s-maxage=1, stale-while-revalidate=1"
+        : "public, s-maxage=3600, stale-while-revalidate=86400",
     },
   });
 };
