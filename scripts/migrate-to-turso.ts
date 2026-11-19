@@ -8,11 +8,72 @@ import { calculateReadingTime, parseAuthors, slugify, stripMarkdown } from "../s
 
 const articlesDir = path.resolve("src/content/articles");
 
+interface ExtractedImage {
+  url: string;
+  alt: string | null;
+  position: number;
+}
+
+function extractImagesFromMarkdown(markdown: string): ExtractedImage[] {
+  const images: ExtractedImage[] = [];
+
+  // 1. Markdown-изображения: ![alt](url) или ![alt](url "title")
+  const mdImgRegex = /!\[([^\]]*)\]\((\S+?)(?:\s+["'][^"']*["'])?\)/g;
+  for (const match of markdown.matchAll(mdImgRegex)) {
+    const rawUrl = match[2]?.trim();
+    if (!rawUrl) continue;
+    const altText = match[1]?.trim() || null;
+    images.push({
+      url: rawUrl,
+      alt: altText,
+      position: images.length,
+    });
+  }
+
+  // 2. HTML-теги <img ...> на случай, если они встречаются в тексте
+  const htmlImgRegex = /<img\b[^>]*>/gi;
+  for (const tagMatch of markdown.matchAll(htmlImgRegex)) {
+    const tag = tagMatch[0];
+    const srcMatch = tag.match(/\bsrc=["']([^"']+)["']/i);
+    const rawUrl = srcMatch?.[1]?.trim();
+    if (!rawUrl) continue;
+
+    const altMatch = tag.match(/\balt=["']([^"']*)["']/i);
+    const altText = altMatch?.[1]?.trim() || null;
+
+    images.push({
+      url: rawUrl,
+      alt: altText,
+      position: images.length,
+    });
+  }
+
+  return images;
+}
+
+async function ensureImagesTable(): Promise<void> {
+  await turso.execute(`
+    CREATE TABLE IF NOT EXISTS images (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      post_id INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      alt TEXT,
+      position INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    );
+  `);
+  await turso.execute(`
+    CREATE INDEX IF NOT EXISTS idx_images_post_id ON images(post_id);
+  `);
+}
+
 async function migrate() {
   if (!fs.existsSync(articlesDir)) {
     console.error(`❌ Ошибка: Директория с контентом не найдена: ${articlesDir}`);
     return;
   }
+
+  await ensureImagesTable();
 
   const files = fs.readdirSync(articlesDir, { recursive: true }) as string[];
   const mdFiles = files.filter((f) => f.endsWith(".md") || f.endsWith(".mdx"));
@@ -25,6 +86,8 @@ async function migrate() {
 
     let { data, content } = matter(fileContent);
     content = content.replaceAll("[](_assets/", "[](/_assets/");
+    const extractedImages = extractImagesFromMarkdown(content);
+
     const plainText = stripMarkdown(content);
     const htmlContent = await marked.parse(content);
     const slug = data.slug || path.basename(file, path.extname(file));
@@ -99,6 +162,19 @@ async function migrate() {
       const postId = postRes.rows[0]?.id;
 
       if (postId) {
+        // 2.1. Изображения поста (1:M)
+        await turso.execute({
+          sql: `DELETE FROM images WHERE post_id = ?;`,
+          args: [postId],
+        });
+
+        for (const img of extractedImages) {
+          await turso.execute({
+            sql: `INSERT INTO images (post_id, url, alt, position) VALUES (?, ?, ?, ?);`,
+            args: [postId, img.url, img.alt, img.position],
+          });
+        }
+
         // 3. Авторы (M:N) и их связь с рубриками
         const authorsList = Array.isArray(data.authors)
           ? parseAuthors(data.authors.join(","))
@@ -168,7 +244,7 @@ async function migrate() {
         }
       }
 
-      console.log(`[Успешно] Мигрирована статья: ${slug}`);
+      console.log(`[Успешно] Мигрирована статья: ${slug} (изображений: ${extractedImages.length})`);
     } catch (err) {
       console.error(`[Ошибка] Не удалось мигрировать статью ${slug}:`, err);
     }

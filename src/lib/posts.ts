@@ -18,6 +18,13 @@ export interface AuthorSummary {
   rubrics?: string[];
 }
 
+export interface PostImage {
+  id: number;
+  url: string;
+  alt?: string;
+  position: number;
+}
+
 export interface Post {
   id: number;
   slug: string;
@@ -33,6 +40,7 @@ export interface Post {
   featured?: boolean;
   image?: string;
   imageCaption?: string;
+  images?: PostImage[];
   readingTime?: string;
   toc?: TocItem[];
   htmlContent: string;
@@ -217,24 +225,23 @@ export function parseAuthors(authorsInput: unknown): AuthorSummary[] {
   if (!authorsInput) return [];
 
   if (Array.isArray(authorsInput)) {
-    return authorsInput
-      .flatMap((item) => {
-        if (typeof item === "string") {
-          return parseAuthors(item);
-        }
-        if (item && typeof item === "object" && "name" in item) {
-          const name = String(item.name).trim();
-          if (!name) return [];
-          return [
-            {
-              name,
-              slug: "slug" in item && item.slug ? String(item.slug) : slugify(name),
-              role: "role" in item && item.role ? String(item.role).trim() : undefined,
-            },
-          ];
-        }
-        return [];
-      });
+    return authorsInput.flatMap((item) => {
+      if (typeof item === "string") {
+        return parseAuthors(item);
+      }
+      if (item && typeof item === "object" && "name" in item) {
+        const name = String(item.name).trim();
+        if (!name) return [];
+        return [
+          {
+            name,
+            slug: "slug" in item && item.slug ? String(item.slug) : slugify(name),
+            role: "role" in item && item.role ? String(item.role).trim() : undefined,
+          },
+        ];
+      }
+      return [];
+    });
   }
 
   const rawString = String(authorsInput).trim();
@@ -244,7 +251,6 @@ export function parseAuthors(authorsInput: unknown): AuthorSummary[] {
   const chunks = splitOutsideParens(rawString, ",");
 
   for (const chunk of chunks) {
-    // Ищем первую пару скобок: "Имя Фамилия (роль, доп. инфо)"
     const parenMatch = chunk.match(/^([^(]+?)\s*\(([^)]*)\)\s*$/);
 
     let name: string;
@@ -255,7 +261,6 @@ export function parseAuthors(authorsInput: unknown): AuthorSummary[] {
       const insideParens = parenMatch[2].trim();
       role = insideParens || undefined;
     } else {
-      // На случай незакрытой скобки или обычной строки без скобок
       const openIdx = chunk.indexOf("(");
       if (openIdx !== -1) {
         name = chunk.slice(0, openIdx).trim();
@@ -286,21 +291,6 @@ export function parseAuthors(authorsInput: unknown): AuthorSummary[] {
   return Array.from(authorsMap.values());
 }
 
-// Людмила Рыбина (Обозреватель, rybinal@yandex.ru), Марина Аромштам
-// Александр Подрабинек (журналист, политзаключенный в СССР)
-// Борис Вишневский (обозреватель, депутат ЗакСа Петербурга)
-// Юрий Сафронов (обозреватель «Новой», журналист RFI, Париж)
-// Юлия (Мартовалиева)
-// Никита Кричевский (д.э.н., профессор)
-// Роман Шлейнов («Важные истории», региональный редактор OCCRP)
-// Леонид Никитинский (обозреватель, член СПЧ)
-// Александр Лебедев (акционер «Новой газеты», д.э.н.)
-// Виталий Ярошевский (Заместитель главного редактора, редактор отдела «Общество»)
-// Александр Покровский (писатель, офицер-подводник)
-// Сергей Канев (криминальный репортер, sbultik@gmail.com)
-// Юрий Батурин (член-корреспондент РАН, летчик-космонавт РФ)
-
-
 /**
  * Получение всех опубликованных постов из Turso с реляционными данными
  */
@@ -322,7 +312,16 @@ export async function getAllPosts(): Promise<Post[]> {
           FROM posts_tags pt
           JOIN tags t ON pt.tag_id = t.id
           WHERE pt.post_id = p.id
-        ) as tags_json
+        ) as tags_json,
+        (
+          SELECT json_group_array(json_object('id', img.id, 'url', img.url, 'alt', img.alt, 'position', img.position))
+          FROM (
+            SELECT id, url, alt, position
+            FROM images
+            WHERE post_id = p.id
+            ORDER BY position ASC, id ASC
+          ) img
+        ) as images_json
       FROM posts p
       LEFT JOIN rubrics r ON p.rubric_id = r.id
       WHERE p.draft = 0
@@ -333,6 +332,16 @@ export async function getAllPosts(): Promise<Post[]> {
       const authors: AuthorSummary[] = row.authors_json ? JSON.parse(row.authors_json) : [];
       const tagsData = row.tags_json ? JSON.parse(row.tags_json) : [];
       const tags: string[] = tagsData.map((t: any) => t.name || t);
+
+      const imagesRaw = row.images_json ? JSON.parse(row.images_json) : [];
+      const images: PostImage[] = imagesRaw
+        .filter((img: any) => img && img.url)
+        .map((img: any) => ({
+          id: Number(img.id),
+          url: String(img.url),
+          alt: img.alt ? String(img.alt) : undefined,
+          position: Number(img.position ?? 0),
+        }));
 
       const rawHtml = row.htmlContent || (row.content ? (marked.parse(row.content) as string) : "");
       const { html, toc } = extractTocAndInjectIds(rawHtml);
@@ -351,8 +360,9 @@ export async function getAllPosts(): Promise<Post[]> {
         tags,
         draft: Boolean(row.draft),
         featured: Boolean(row.featured),
-        image: row.image || undefined,
-        imageCaption: row.imageCaption || undefined,
+        image: row.image || images[0]?.url || undefined,
+        imageCaption: row.imageCaption || images[0]?.alt || undefined,
+        images,
         readingTime: row.reading_time || calculateReadingTime(plainText),
         toc,
         htmlContent: html,
@@ -493,7 +503,6 @@ export async function searchPosts(query: string): Promise<SearchResult[]> {
   if (!trimmed) return [];
 
   try {
-    // Используем FTS5 поиск в базе данных Turso
     const result = await turso.execute({
       sql: `
         SELECT p.slug
