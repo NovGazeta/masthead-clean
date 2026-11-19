@@ -22,6 +22,10 @@
   "scripts": {
     "dev": "astro dev --host --mode development --port 5555",
     "dev:local": "astro dev --mode development --port 5555",
+    "dev:bg": "astro dev --background --mode development --port 5555",
+    "dev:stop": "astro dev stop",
+    "dev:status": "astro dev status",
+    "dev:logs": "astro dev logs",
     "build": "astro build",
     "build:local": "prettier . --write && astro build",
     "preview": "astro preview --host --mode development --port 5555",
