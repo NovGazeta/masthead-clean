@@ -6,7 +6,7 @@ import { marked } from "marked";
 import { turso } from "../src/lib/turso";
 import { calculateReadingTime, parseAuthors, slugify, stripMarkdown } from "../src/lib/posts";
 
-const articlesDir = path.resolve("src/content/articles");
+const articlesDir = path.resolve("src/content/articles"); //  // ../ng_archive/articles
 
 interface ExtractedImage {
   url: string;
