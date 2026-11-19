@@ -13,6 +13,7 @@ export interface AuthorSummary {
   slug: string;
   slugName?: string;
   role?: string;
+  bio?: string;
   postCount?: number;
   latestPostDate?: Date;
   rubrics?: string[];
@@ -105,7 +106,6 @@ const BASE_POST_SELECT = `
   LEFT JOIN rubrics r ON p.rubric_id = r.id
 `;
 
-// Вспомогательная функция для создания слага из строки
 export function slugify(text: string): string {
   return toSlug(text);
 }
@@ -118,7 +118,6 @@ export function slugifyAuthor(author: string): string {
   return toSlug(author);
 }
 
-// Вспомогательная функция для отображения имени автора по его slug с капитализацией всех слов:
 export function authorNameFromSlug(slug: string): string {
   return fromSlug(slug, false)
     .split(/(\s+|-)/)
@@ -389,7 +388,7 @@ function buildPostFilterWhere(options: Omit<PaginatedPostsOptions, "page" | "per
         SELECT 1
         FROM posts_authors pa
         JOIN authors a ON pa.author_id = a.id
-        WHERE pa.post_id = p.id AND a.slug = ?
+        WHERE pa.post_id = p.id AND LOWER(a.slug) = LOWER(?)
       )
     `);
     args.push(options.authorSlug);
@@ -401,7 +400,7 @@ function buildPostFilterWhere(options: Omit<PaginatedPostsOptions, "page" | "per
         SELECT 1
         FROM posts_tags pt
         JOIN tags t ON pt.tag_id = t.id
-        WHERE pt.post_id = p.id AND t.slug = ?
+        WHERE pt.post_id = p.id AND LOWER(t.slug) = LOWER(?)
       )
     `);
     args.push(options.tagSlug);
@@ -413,9 +412,6 @@ function buildPostFilterWhere(options: Omit<PaginatedPostsOptions, "page" | "per
   };
 }
 
-/**
- * Точечное получение одной опубликованной статьи по slug
- */
 export async function getPostBySlug(slug: string): Promise<Post | null> {
   const safeSlug = slug.replace(/^\/+/, "").replace(/\/+$/, "");
   if (!safeSlug) return null;
@@ -434,9 +430,6 @@ export async function getPostBySlug(slug: string): Promise<Post | null> {
   }
 }
 
-/**
- * Получение последних N опубликованных статей (например, для RSS или ленты)
- */
 export async function getRecentPosts(limit = 20): Promise<Post[]> {
   const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
 
@@ -453,9 +446,6 @@ export async function getRecentPosts(limit = 20): Promise<Post[]> {
   }
 }
 
-/**
- * Похожие статьи: сначала из той же рубрики, при нехватке — свежие из других рубрик
- */
 export async function getRelatedPosts(
   currentSlug: string,
   rubricName: string,
@@ -514,9 +504,6 @@ export async function getRelatedPosts(
   }
 }
 
-/**
- * Пагинированная выборка статей из Turso через COUNT(*) и LIMIT/OFFSET
- */
 export async function getPaginatedPosts(
   options: PaginatedPostsOptions = {},
 ): Promise<PaginatedResult<Post>> {
@@ -575,9 +562,6 @@ export async function getPaginatedPosts(
   }
 }
 
-/**
- * Агрегация авторов с количеством статей напрямую в SQL
- */
 export async function getAllAuthors(): Promise<AuthorSummary[]> {
   try {
     const result = await turso.execute(`
@@ -601,6 +585,7 @@ export async function getAllAuthors(): Promise<AuthorSummary[]> {
       slug: String(row.slug),
       slugName: authorNameFromSlug(String(row.slug)),
       role: row.role ? String(row.role) : undefined,
+      bio: row.role ? String(row.role) : undefined,
       postCount: Number(row.post_count ?? 0),
       latestPostDate: row.latest_post_date ? new Date(String(row.latest_post_date)) : undefined,
       rubrics: row.rubrics_csv
@@ -616,47 +601,61 @@ export async function getAllAuthors(): Promise<AuthorSummary[]> {
   }
 }
 
-/**
- * Данные конкретного автора и только его опубликованные статьи
- */
-export async function getAuthorBySlug(
-  authorSlug: string,
-): Promise<{ author?: AuthorSummary; posts: Post[] }> {
-  const safeSlug = slugifyAuthor(authorSlug);
-  if (!safeSlug) return { author: undefined, posts: [] };
+export async function getAuthorBySlug(authorSlug: string): Promise<AuthorSummary | null> {
+  const raw = decodeURIComponent(authorSlug).trim();
+  if (!raw) return null;
+
+  const normalizedSlug = slugifyAuthor(raw);
+  const candidates = Array.from(
+    new Set([raw, raw.toLowerCase(), normalizedSlug].filter(Boolean)),
+  );
 
   try {
-    const [allAuthors, postsRes] = await Promise.all([
-      getAllAuthors(),
-      turso.execute({
-        sql: `
-          ${BASE_POST_SELECT}
-          WHERE p.draft = 0
-            AND EXISTS (
-              SELECT 1
-              FROM posts_authors pa
-              JOIN authors a ON pa.author_id = a.id
-              WHERE pa.post_id = p.id AND a.slug = ?
-            )
-          ORDER BY p.pub_date DESC, p.date DESC;
-        `,
-        args: [safeSlug],
-      }),
-    ]);
+    const placeholders = candidates.map(() => "?").join(", ");
+    const result = await turso.execute({
+      sql: `
+        SELECT
+          a.name,
+          a.slug,
+          a.role,
+          COUNT(p.id) as post_count,
+          MAX(COALESCE(p.pub_date, p.date)) as latest_post_date,
+          GROUP_CONCAT(DISTINCT r.name) as rubrics_csv
+        FROM authors a
+        LEFT JOIN posts_authors pa ON pa.author_id = a.id
+        LEFT JOIN posts p ON p.id = pa.post_id AND p.draft = 0
+        LEFT JOIN rubrics r ON p.rubric_id = r.id
+        WHERE LOWER(a.slug) IN (${placeholders})
+        GROUP BY a.id, a.name, a.slug, a.role
+        LIMIT 1;
+      `,
+      args: candidates.map((c) => c.toLowerCase()),
+    });
 
-    const author = allAuthors.find((a) => a.slug === safeSlug);
-    const posts = postsRes.rows.map(mapRowToPost);
+    const row = result.rows[0];
+    if (!row) return null;
 
-    return { author, posts };
+    return {
+      name: String(row.name),
+      slug: String(row.slug),
+      slugName: authorNameFromSlug(String(row.slug)),
+      role: row.role ? String(row.role) : undefined,
+      bio: row.role ? String(row.role) : undefined,
+      postCount: Number(row.post_count ?? 0),
+      latestPostDate: row.latest_post_date ? new Date(String(row.latest_post_date)) : undefined,
+      rubrics: row.rubrics_csv
+        ? String(row.rubrics_csv)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [],
+    };
   } catch (error) {
     console.error("Ошибка получения автора по slug из Turso:", error);
-    return { author: undefined, posts: [] };
+    return null;
   }
 }
 
-/**
- * Все теги с количеством опубликованных статей напрямую в SQL
- */
 export async function getAllTags(): Promise<TagSummary[]> {
   try {
     const result = await turso.execute(`
@@ -682,9 +681,6 @@ export async function getAllTags(): Promise<TagSummary[]> {
   }
 }
 
-/**
- * Статьи конкретного тега без загрузки всей базы
- */
 export async function getPostsByTag(
   tagSlug: string,
 ): Promise<{ tagName: string; posts: Post[] } | null> {
@@ -758,9 +754,6 @@ export function paginateItems<T>(
   };
 }
 
-/**
- * Поиск через FTS5: загружаем только найденные статьи
- */
 export async function searchPosts(query: string): Promise<SearchResult[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];

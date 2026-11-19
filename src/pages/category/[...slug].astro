@@ -1,95 +1,149 @@
 ---
-import { getAllPosts, paginateItems } from "@/lib/posts";
-import { fromSlug, toSlug } from "@/lib/translit";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import ArticleCard from "@/components/ArticleCard.astro";
 import Pagination from "@/components/Pagination.astro";
+import { getAllRubrics, getPaginatedPosts, getPostWord, slugify } from "@/lib/posts";
 
-const { slug } = Astro.params;
-if (!slug) return Astro.redirect("/404");
+const rawParam = Astro.params.slug?.trim() ?? "";
+const segments = rawParam
+  .split("/")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
-const segments = slug ? slug.split("/") : [];
-const categoryName = segments.length > 0 ? fromSlug(segments[0]) : undefined;
-if (!categoryName) return Astro.redirect("/404");
+const rawCategory = segments[0] ?? "";
+const rawPage = segments[1] ?? "";
+const categorySlug = rawCategory ? slugify(decodeURIComponent(rawCategory)) : "";
 
-let currentPage = 1;
-
-if (segments.length > 1 && segments[1]) {
-  const parsedPage = parseInt(segments[1], 10);
-  if (!isNaN(parsedPage) && parsedPage > 1) {
-    currentPage = parsedPage;
-  }
-}
-
+const isValidPage = rawPage === "" || /^[1-9]\d*$/.test(rawPage);
+const isExtraSegments = segments.length > 2;
+const requestedPage = rawPage === "" ? 1 : Number(rawPage);
 const ARTICLES_PER_PAGE = 12;
 
-const allPosts = await getAllPosts();
-const categoryPosts = allPosts.filter(
-  (post) => post.rubric.trim().toLowerCase() === categoryName.toLowerCase(),
-);
+const allRubrics = !isExtraSegments && isValidPage && categorySlug ? await getAllRubrics() : [];
+const matchedCategoryName =
+  allRubrics.find((name) => slugify(name).toLowerCase() === categorySlug.toLowerCase()) ?? null;
 
-const totalPosts = categoryPosts.length;
-const totalPages = Math.max(1, Math.ceil(totalPosts / ARTICLES_PER_PAGE));
+const paginated =
+  !isExtraSegments && isValidPage && matchedCategoryName
+    ? await getPaginatedPosts({
+        page: requestedPage,
+        perPage: ARTICLES_PER_PAGE,
+        rubricSlug: slugify(matchedCategoryName),
+      })
+    : null;
 
-// Если запросили несуществующую страницу за пределами диапазона — 404
-if (currentPage > totalPages) {
-  return new Response(null, { status: 404 });
+const isOutOfRange =
+  paginated !== null && paginated.totalItems > 0 && requestedPage > paginated.totalPages;
+
+const isNotFound =
+  isExtraSegments ||
+  !categorySlug ||
+  !matchedCategoryName ||
+  !isValidPage ||
+  isOutOfRange ||
+  !paginated;
+
+if (isNotFound) {
+  Astro.response.status = 404;
 }
 
-const startIndex = (currentPage - 1) * ARTICLES_PER_PAGE;
-const paginatedPosts = categoryPosts.slice(startIndex, startIndex + ARTICLES_PER_PAGE);
+const currentPage = paginated?.currentPage ?? 1;
+const totalPages = paginated?.totalPages ?? 1;
+const totalItems = paginated?.totalItems ?? 0;
+const paginatedPosts = paginated?.items ?? [];
 
-if (!import.meta.env.DEV)
+const pageTitle = isNotFound
+  ? "Рубрика не найдена"
+  : currentPage > 1
+    ? `${matchedCategoryName} — Страница ${currentPage}`
+    : matchedCategoryName;
+
+if (!import.meta.env.DEV) {
   Astro.response.headers.set(
     "Cache-Control",
     "public, s-maxage=3600, stale-while-revalidate=86400",
   );
-else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-while-revalidate=1");
+} else {
+  Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-while-revalidate=1");
+}
 ---
 
-<BaseLayout title={categoryName} description={`Все публикации в рубрике «${categoryName}»`}>
-  <section class="category-page">
-    <header class="category-header">
-      <span class="meta-label">Рубрика</span>
-      <h1>{categoryName}</h1>
-      <p class="meta-label">
-        Материалов в разделе: {categoryPosts.length}
-        {totalPages > 1 && ` • Страница ${currentPage} из ${totalPages}`}
-      </p>
-    </header>
+<BaseLayout
+  title={pageTitle}
+  description={matchedCategoryName ? `Публикации в рубрике «${matchedCategoryName}»` : undefined}
+>
+  {isNotFound ? (
+    <section class="not-found">
+      <h1>Рубрика не найдена</h1>
+      <p>Запрошенная рубрика или страница архива не существует.</p>
+      <a class="back-link meta-label" href="/">
+        На главную
+      </a>
+    </section>
+  ) : (
+    <section class="category-page">
+      <header class="category-header">
+        <div>
+          <span class="meta-label category-kicker">Рубрика</span>
+          <h1>{matchedCategoryName}</h1>
+        </div>
+        <span class="meta-label category-count">
+          {totalItems} {getPostWord(totalItems)}
+        </span>
+      </header>
 
-    {paginatedPosts.length === 0 ? (
-      <p class="empty-msg">В этой рубрике пока нет публикаций.</p>
-    ) : (
-      <>
+      {paginatedPosts.length === 0 ? (
+        <p class="empty-state">В этой рубрике пока нет публикаций.</p>
+      ) : (
         <div class="articles-grid">
           {paginatedPosts.map((post) => (
-            <ArticleCard post={post} hideRubric={true} />
+            <ArticleCard post={post} />
           ))}
         </div>
+      )}
 
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          basePath={`/category/${toSlug(categoryName)}`}
-        />
-      </>
-    )}
-  </section>
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        basePath={`/category/${encodeURIComponent(categorySlug)}`}
+        ariaLabel="Пагинация по рубрике"
+      />
+    </section>
+  )}
 </BaseLayout>
 
 <style>
+  .category-page {
+    max-width: 1040px;
+    margin: 0 auto;
+  }
+
   .category-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 1.5rem;
     padding-bottom: 1.5rem;
-    border-bottom: 2px solid var(--border-dark);
     margin-bottom: 2.5rem;
+    border-bottom: 2px solid var(--border-dark);
+  }
+
+  .category-kicker {
+    display: block;
+    color: var(--text-secondary);
+    margin-bottom: 0.35rem;
   }
 
   .category-header h1 {
-    font-size: clamp(2rem, 5vw, 3.4rem);
+    margin: 0;
+    font-size: clamp(2rem, 4.5vw, 3.1rem);
     font-weight: 500;
-    margin: 0.4rem 0 0.6rem;
-    letter-spacing: -0.02em;
+    line-height: 1.12;
+  }
+
+  .category-count {
+    color: var(--text-secondary);
+    white-space: nowrap;
   }
 
   .articles-grid {
@@ -98,7 +152,24 @@ else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-whil
     gap: 2.5rem;
   }
 
-  .empty-msg {
+  .not-found {
+    padding: 4rem 0;
+    text-align: center;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 0.85rem;
+    border: 1px solid var(--border-dark);
+    color: var(--text-primary);
+    text-decoration: none;
+  }
+
+  .empty-state {
+    padding: 3rem 0;
+    text-align: center;
     color: var(--text-secondary);
     font-style: italic;
   }
@@ -109,7 +180,12 @@ else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-whil
     }
   }
 
-  @media (max-width: 600px) {
+  @media (max-width: 768px) {
+    .category-header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
     .articles-grid {
       grid-template-columns: 1fr;
     }

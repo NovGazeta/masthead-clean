@@ -1,10 +1,9 @@
 ---
-import { getAllAuthors, getAllPosts } from "@/lib/posts";
+import { getAllAuthors } from "@/lib/posts";
 import { toSlug } from "@/lib/translit";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 
-const allPosts = await getAllPosts();
-const authors = getAllAuthors(allPosts);
+const authors = await getAllAuthors();
 
 function getInitials(name: string): string {
   return name
@@ -47,37 +46,43 @@ else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-whil
       <p class="empty-state">Список авторов пока пуст.</p>
     ) : (
       <div class="authors-grid">
-        {authors.map((author) => (
-          <article class="author-card">
-            <div class="author-card-top">
-              <div class="author-monogram" aria-hidden="true">
-                {getInitials(author.name)}
-              </div>
-              <div class="author-heading">
-                <h2>
-                  <a href={`/author/${author.slug}`}>{author.name}</a>
-                </h2>
-                <span class="meta-label">{pluralizeArticles(author.postCount)}</span>
-              </div>
-            </div>
+        {authors.map((author) => {
+          const postCount = author.postCount ?? 0;
+          const bioText = (author as { bio?: string }).bio || author.role || "";
 
-            <p class="author-bio">{author.bio}</p>
-
-            <div class="author-footer">
-              <div class="author-topics">
-                {author.rubrics?.length > 0 &&
-                  author.rubrics.map((cat) => (
-                    <span class="category-tag">
-                      <a href={`/category/${toSlug(cat)}`}>{cat}</a>
-                    </span>
-                  ))}
+          return (
+            <article class="author-card">
+              <div class="author-card-top">
+                <div class="author-monogram" aria-hidden="true">
+                  {getInitials(author.name)}
+                </div>
+                <div class="author-heading">
+                  <h2>
+                    <a href={`/author/${author.slug}`}>{author.name}</a>
+                  </h2>
+                  <span class="meta-label">{pluralizeArticles(postCount)}</span>
+                </div>
               </div>
-              <a href={`/author/${author.slug}`} class="meta-label read-author-link">
-                Все материалы &rarr;
-              </a>
-            </div>
-          </article>
-        ))}
+
+              {bioText && <p class="author-bio">{bioText}</p>}
+
+              <div class="author-footer">
+                <div class="author-topics">
+                  {author.rubrics &&
+                    author.rubrics.length > 0 &&
+                    author.rubrics.map((cat) => (
+                      <span class="category-tag">
+                        <a href={`/category/${toSlug(cat)}`}>{cat}</a>
+                      </span>
+                    ))}
+                </div>
+                <a href={`/author/${author.slug}`} class="meta-label read-author-link">
+                  Все материалы &rarr;
+                </a>
+              </div>
+            </article>
+          );
+        })}
       </div>
     )}
   </section>

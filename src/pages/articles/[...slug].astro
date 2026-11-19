@@ -32,6 +32,32 @@ const {
   htmlContent,
 } = post;
 
+function normalizeHeadingText(str: string): string {
+  return str
+    .replace(/<[^>]+>/g, "")
+    .replace(/&[#a-z0-9]+;/gi, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function deduplicateLeadingTitle(html: string, articleTitle: string): string {
+  const target = normalizeHeadingText(articleTitle);
+  if (!target) return html;
+
+  return html.replace(
+    /^\s*(?:<p[^>]*>\s*)?<h([12])([^>]*)>([\s\S]*?)<\/h\1>(?:\s*<\/p>)?/i,
+    (match, _level: string, _attrs: string, inner: string) => {
+      const headingNorm = normalizeHeadingText(inner);
+      if (headingNorm === target) {
+        return "";
+      }
+      return match;
+    },
+  );
+}
+
 const authors = Array.isArray(post.authors) ? post.authors : parseAuthors(post.authors);
 const primaryAuthorName = authors[0]?.name;
 
@@ -54,7 +80,12 @@ const facebookShareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeU
 
 const ogImageSource = image || post.images?.[0]?.url;
 const absoluteImageUrl = ogImageSource ? toAbsoluteAssetUrl(ogImageSource, baseUrl) : undefined;
-const renderedHtml = applyAssetBaseUrlToHtml(htmlContent);
+const dedupedHtml = deduplicateLeadingTitle(htmlContent, title);
+const renderedHtml = applyAssetBaseUrlToHtml(dedupedHtml);
+const filteredToc =
+  toc && toc.length > 0
+    ? toc.filter((item) => normalizeHeadingText(item.text) !== normalizeHeadingText(title))
+    : toc;
 
 const articleJsonLd: Record<string, unknown> = {
   "@context": "https://schema.org",
@@ -120,7 +151,7 @@ if (!import.meta.env.DEV) {
       </div>
 
       <h1>{title}</h1>
-      {subtitle && <p class="lead">{subtitle}</p>}
+      {subtitle && <p class="lead"> </p>}
 
       <div class="meta-label byline">
         Текст:{" "}
@@ -138,11 +169,11 @@ if (!import.meta.env.DEV) {
     </header>
 
     <!-- Оглавление статьи (выводится при наличии 2 и более подзаголовков) -->
-    {toc && toc.length >= 2 && (
+    {filteredToc && filteredToc.length >= 2 && (
       <nav class="toc-box" aria-label="Содержание статьи">
         <span class="meta-label toc-heading">Содержание</span>
         <ol class="toc-list">
-          {toc.map((item) => (
+          {filteredToc.map((item) => (
             <li class={`toc-item toc-level-${item.level}`}>
               <a href={`#${item.id}`}>{item.text}</a>
             </li>

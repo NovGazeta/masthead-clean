@@ -5,11 +5,16 @@ import { parseAuthors } from "@/lib/posts";
 interface Props {
   post: Post;
   featured?: boolean;
+  hideAuthors?: boolean;
 }
 
-const { post, featured = false } = Astro.props;
+const { post, featured = false, hideAuthors = false } = Astro.props;
 
-const authors = Array.isArray(post.authors) ? post.authors : parseAuthors(post.authors);
+const authors = hideAuthors
+  ? []
+  : Array.isArray(post.authors)
+    ? post.authors
+    : parseAuthors(post.authors);
 
 const parsedDate =
   post.pubDate instanceof Date ? post.pubDate : new Date(post.pubDate as unknown as string);
@@ -42,7 +47,7 @@ const excerpt =
     {excerpt && <p class="card-excerpt">{excerpt}</p>}
 
     <div class="card-footer meta-label">
-      {authors.length > 0 && (
+      {!hideAuthors && authors.length > 0 && (
         <span class="card-authors">{authors.map((a) => a.name).join(", ")} · </span>
       )}
       <time datetime={validDate.toISOString()}>{formattedDate}</time>
@@ -60,8 +65,8 @@ const excerpt =
   }
 
   .article-card.is-featured {
-    border-top: 2px solid var(--border-dark);
-    padding-top: 1.5rem;
+    border-bottom: 2px solid var(--border-dark);
+    padding-bottom: 1.5rem;
   }
 
   .card-body {

@@ -1,133 +1,125 @@
 ---
-import { type Post, slugifyTag, parseAuthors } from "@/lib/posts";
-import { toSlug } from "@/lib/translit";
+import type { Post } from "@/lib/posts";
+import { parseAuthors } from "@/lib/posts";
 
 interface Props {
   post: Post;
   featured?: boolean;
-  hideRubric?: boolean;
-  hideAuthors?: boolean;
 }
 
-const { post, featured = false, hideRubric = false, hideAuthors = false } = Astro.props;
+const { post, featured = false } = Astro.props;
 
 const authors = Array.isArray(post.authors) ? post.authors : parseAuthors(post.authors);
 
-const formattedDate = post.pubDate.toLocaleDateString("ru-RU", {
+const parsedDate =
+  post.pubDate instanceof Date ? post.pubDate : new Date(post.pubDate as unknown as string);
+const validDate = !Number.isNaN(parsedDate.getTime()) ? parsedDate : new Date();
+
+const formattedDate = validDate.toLocaleDateString("ru-RU", {
   day: "numeric",
-  month: "short",
+  month: "long",
   year: "numeric",
 });
+
+const excerpt =
+  post.subtitle ||
+  (post.plainText
+    ? `${post.plainText.slice(0, 180)}${post.plainText.length > 180 ? "…" : ""}`
+    : "");
 ---
 
 <article class:list={["article-card", { "is-featured": featured }]}>
-  <div class="card-meta-top">
-    {!hideRubric && (
-      <span class="category-tag">
-        <a href={`/category/${toSlug(post.rubric)}`}>{post.rubric}</a>
-      </span>
-    )}
-    <span class="meta-label">
-      {!hideAuthors &&
-        authors?.length > 0 &&
-        authors.map((author) => <a href={`/author/${toSlug(author.name)}`}>{author.name}</a>)}{" "}
-      &bull; {formattedDate} &bull; {post.readingTime}
-    </span>
-  </div>
-
-  <h3 class="card-title">
-    <a href={`/articles/${post.slug}`}>{post.title}</a>
-  </h3>
-
-  {post.subtitle && <p class="card-excerpt">{post.subtitle}</p>}
-
-  {post.tags && post.tags.length > 0 && (
-    <div class="card-tags">
-      {post.tags.slice(0, 3).map((tag) => (
-        <a href={`/tag/${slugifyTag(tag)}`} class="meta-label tag-link">
-          #{tag}
-        </a>
-      ))}
+  <div class="card-body">
+    <div class="card-meta-top">
+      {post.rubric && <span class="category-tag">{post.rubric}</span>}
+      {post.genre && <span class="genre-badge meta-label">{post.genre}</span>}
     </div>
-  )}
+
+    <h2 class="card-title">
+      <a href={`/articles/${encodeURIComponent(post.slug)}`}>{post.title}</a>
+    </h2>
+
+    {excerpt && <p class="card-excerpt">{excerpt}</p>}
+
+    <div class="card-footer meta-label">
+      {authors.length > 0 && (
+        <span class="card-authors">{authors.map((a) => a.name).join(", ")} · </span>
+      )}
+      <time datetime={validDate.toISOString()}>{formattedDate}</time>
+      {post.readingTime && <span> · {post.readingTime}</span>}
+    </div>
+  </div>
 </article>
 
 <style>
   .article-card {
     display: flex;
     flex-direction: column;
-    padding-bottom: 2rem;
-    border-bottom: 1px solid var(--border-color);
+    border-top: 1px solid var(--border-color);
+    padding-top: 1.25rem;
   }
 
   .article-card.is-featured {
-    grid-column: span 2;
-    padding-bottom: 2.5rem;
     border-bottom: 2px solid var(--border-dark);
+    padding-bottom: 1.5rem;
+  }
+
+  .card-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
   }
 
   .card-meta-top {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.65rem;
     flex-wrap: wrap;
     margin-bottom: 0.6rem;
   }
 
+  .genre-badge {
+    color: var(--text-secondary);
+    background-color: var(--surface-color);
+    padding: 0.1rem 0.45rem;
+    border: 1px solid var(--border-color);
+  }
+
   .card-title {
-    font-size: clamp(1.2rem, 2vw, 1.5rem);
+    margin: 0 0 0.6rem;
+    font-size: 1.35rem;
     font-weight: 500;
     line-height: 1.25;
-    margin-bottom: 0.5rem;
   }
 
   .article-card.is-featured .card-title {
-    font-size: clamp(1.5rem, 3vw, 2.2rem);
+    font-size: clamp(1.65rem, 3.2vw, 2.35rem);
+    line-height: 1.18;
   }
 
   .card-title a {
     color: var(--text-primary);
     text-decoration: none;
-    transition: color 0.2s ease;
   }
 
   .card-title a:hover {
     color: var(--accent-color);
-    opacity: 1;
   }
 
   .card-excerpt {
-    font-size: 1.02rem;
+    margin: 0 0 1rem;
+    color: var(--text-secondary);
     line-height: 1.55;
-    color: var(--text-secondary);
-    margin-bottom: 1rem;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    font-size: 0.98rem;
   }
 
-  .card-tags {
-    display: flex;
-    gap: 0.4rem;
-    flex-wrap: wrap;
+  .article-card.is-featured .card-excerpt {
+    font-size: 1.08rem;
+  }
+
+  .card-footer {
     margin-top: auto;
-  }
-
-  .tag-link {
     color: var(--text-secondary);
-    text-decoration: none;
-    transition: color 0.2s ease;
-  }
-
-  .tag-link:hover {
-    color: var(--accent-color);
-    opacity: 1;
-  }
-
-  @media (max-width: 900px) {
-    .article-card.is-featured {
-      grid-column: span 1;
-    }
+    line-height: 1.5;
   }
 </style>

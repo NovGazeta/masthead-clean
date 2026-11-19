@@ -1,5 +1,5 @@
 ---
-import { getAuthorBySlug, paginateItems } from "@/lib/posts";
+import { getAuthorBySlug, getPaginatedPosts, slugifyAuthor } from "@/lib/posts";
 import { toSlug } from "@/lib/translit";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import ArticleCard from "@/components/ArticleCard.astro";
@@ -9,11 +9,8 @@ const { slug } = Astro.params;
 if (!slug) return Astro.redirect("/404");
 
 const segments = slug ? slug.split("/") : [];
-const authorSlug = segments.length > 0 ? segments[0] : undefined;
-if (!authorSlug) return Astro.redirect("/404");
-
-const { author, posts } = await getAuthorBySlug(authorSlug);
-if (!author) return Astro.redirect("/404");
+const rawAuthorSlug = segments.length > 0 ? segments[0] : undefined;
+if (!rawAuthorSlug) return Astro.redirect("/404");
 
 let currentPage = 1;
 
@@ -24,18 +21,28 @@ if (segments.length > 1 && segments[1]) {
   }
 }
 
-const ARTICLES_PER_PAGE = 12;
+const author = await getAuthorBySlug(rawAuthorSlug);
+if (!author) return Astro.redirect("/404");
 
-const totalPosts = posts.length;
-const totalPages = Math.max(1, Math.ceil(totalPosts / ARTICLES_PER_PAGE));
+const ARTICLES_PER_PAGE = 12;
+const authorSlug = author.slug || slugifyAuthor(rawAuthorSlug);
+
+const paginated = await getPaginatedPosts({
+  page: currentPage,
+  perPage: ARTICLES_PER_PAGE,
+  authorSlug,
+});
+
+const totalPosts = paginated.totalItems;
+const totalPages = paginated.totalPages;
 
 // Если запросили несуществующую страницу за пределами диапазона — 404
 if (currentPage > totalPages) {
   return new Response(null, { status: 404 });
 }
 
-const startIndex = (currentPage - 1) * ARTICLES_PER_PAGE;
-const paginatedPosts = posts.slice(startIndex, startIndex + ARTICLES_PER_PAGE);
+const paginatedPosts = paginated.items;
+const authorBio = (author as { bio?: string }).bio || author.role || "";
 
 function getInitials(name: string): string {
   return name
@@ -64,14 +71,14 @@ if (!import.meta.env.DEV)
 else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-while-revalidate=1");
 ---
 
-<BaseLayout title={`${author.name} — Автор`} description={author.bio}>
+<BaseLayout title={`${author.name} — Автор`} description={authorBio}>
   <section class="author-profile-page">
     <header class="author-dossier">
       <div class="dossier-top">
         <a href="/authors" class="meta-label back-link">
           &larr; Все авторы
         </a>
-        <span class="meta-label">{pluralizeArticles(author.postCount)}</span>
+        <span class="meta-label">{pluralizeArticles(author.postCount ?? totalPosts)}</span>
       </div>
 
       <div class="dossier-main">
