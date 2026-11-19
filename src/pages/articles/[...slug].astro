@@ -1,5 +1,6 @@
 ---
 import { getAllPosts, getPostBySlug, slugifyTag, parseAuthors } from "@/lib/posts";
+import { applyAssetBaseUrlToHtml, resolveAssetUrl, toAbsoluteAssetUrl } from "@/lib/assets";
 import { toSlug } from "@/lib/translit";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import ArticleCard from "@/components/ArticleCard.astro";
@@ -10,7 +11,7 @@ if (!slug) {
   return Astro.redirect("/404");
 }
 
-const post = await getPostBySlug(slug);
+const post = await getPostBySlug(decodeURIComponent(slug));
 
 if (!post) {
   return Astro.redirect("/404");
@@ -20,7 +21,6 @@ const {
   title,
   subtitle,
   pubDate,
-  authorSlug,
   rubric,
   genre,
   source,
@@ -32,8 +32,12 @@ const {
 } = post;
 
 const authors = Array.isArray(post.authors) ? post.authors : parseAuthors(post.authors);
+const primaryAuthorName = authors[0]?.name;
 
-const formattedDate = pubDate.toLocaleDateString("ru-RU", {
+const validPubDate =
+  pubDate instanceof Date && !Number.isNaN(pubDate.getTime()) ? pubDate : new Date();
+
+const formattedDate = validPubDate.toLocaleDateString("ru-RU", {
   day: "numeric",
   month: "long",
   year: "numeric",
@@ -41,17 +45,16 @@ const formattedDate = pubDate.toLocaleDateString("ru-RU", {
 
 const baseUrl = (Astro.site?.toString() || Astro.url.origin).replace(/\/$/, "");
 const postUrl = new URL(`/articles/${encodeURIComponent(post.slug)}`, baseUrl).toString();
-const isoDate = pubDate.toISOString();
+const isoDate = validPubDate.toISOString();
 
-const telegramShareUrl = `https://t.me/share/url?url=${postUrl}&text=${encodeURIComponent(title)}`;
-const xShareUrl = `https://x.com/intent/tweet?url=${postUrl}&text=${encodeURIComponent(title)}`;
-const facebookShareUrl = `https://www.facebook.com/sharer/sharer.php?u=${postUrl}`;
+const telegramShareUrl = `https://t.me/share/url?url=${encodeURIComponent(postUrl)}&text=${encodeURIComponent(title)}`;
+const xShareUrl = `https://x.com/intent/tweet?url=${encodeURIComponent(postUrl)}&text=${encodeURIComponent(title)}`;
+const facebookShareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(postUrl)}`;
 
-const absoluteImageUrl = image
-  ? image.startsWith("http://") || image.startsWith("https://")
-    ? image
-    : new URL(image.startsWith("/") ? image : `/${image}`, baseUrl).toString()
-  : undefined;
+const rawCoverImage = image || post.images?.[0]?.url;
+const coverImageUrl = resolveAssetUrl(rawCoverImage);
+const absoluteImageUrl = rawCoverImage ? toAbsoluteAssetUrl(rawCoverImage, baseUrl) : undefined;
+const renderedHtml = applyAssetBaseUrlToHtml(htmlContent);
 
 const articleJsonLd: Record<string, unknown> = {
   "@context": "https://schema.org",
@@ -63,19 +66,22 @@ const articleJsonLd: Record<string, unknown> = {
   articleSection: rubric,
   mainEntityOfPage: {
     "@type": "WebPage",
-    "@id": postUrl,
+    "@id": source || postUrl,
   },
-  author: {
-    "@type": "Person",
-    name: authors[0],
-  },
+  ...(primaryAuthorName
+    ? {
+        author: {
+          "@type": "Person",
+          name: primaryAuthorName,
+        },
+      }
+    : {}),
   publisher: {
     "@type": "Organization",
     name: "THE Журнал",
     url: baseUrl,
   },
   ...(absoluteImageUrl ? { image: [absoluteImageUrl] } : {}),
-  ...(source ? { mainEntityOfPage: source } : {}),
 };
 
 const allPosts = await getAllPosts();
@@ -91,21 +97,24 @@ const fallbackPosts = otherPosts.filter(
 
 const relatedPosts = [...sameRubricPosts, ...fallbackPosts].slice(0, 3);
 
-if (!import.meta.env.DEV)
+if (!import.meta.env.DEV) {
   Astro.response.headers.set(
     "Cache-Control",
     "public, s-maxage=3600, stale-while-revalidate=86400",
   );
-else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-while-revalidate=1");
+} else {
+  Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-while-revalidate=1");
+}
 ---
 
 <BaseLayout
   title={title}
   description={subtitle || post.plainText.slice(0, 160)}
-  image={image}
+  image={rawCoverImage}
+  imageAlt={imageCaption || title}
   type="article"
   publishedTime={isoDate}
-  author={authors[0]}
+  author={primaryAuthorName}
   section={rubric}
   jsonLd={articleJsonLd}
 >
@@ -127,24 +136,27 @@ else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-whil
       <div class="meta-label byline">
         Текст:{" "}
         {authors?.length > 0 &&
-          authors.map((author) => (
-            <a href={`/author/${toSlug(author.name)}`} class="author-byline-link">
-              {author.name}
-            </a>
+          authors.map((author, idx) => (
+            <>
+              <a href={`/author/${author.slug || toSlug(author.name)}`} class="author-byline-link">
+                {author.name}
+              </a>
+              {idx < authors.length - 1 && ", "}
+            </>
           ))}{" "}
         &bull; Опубликовано: {formattedDate} &bull; {readingTime}
       </div>
     </header>
 
-    {image && (
+    {coverImageUrl && (
       <figure class="post-hero">
-        <img src={image} alt={title} />
+        <img src={coverImageUrl} alt={imageCaption || title} />
         {imageCaption && <figcaption class="meta-label">{imageCaption}</figcaption>}
       </figure>
     )}
 
     <!-- Оглавление статьи (выводится при наличии 2 и более подзаголовков) -->
-    {toc.length >= 2 && (
+    {toc && toc.length >= 2 && (
       <nav class="toc-box" aria-label="Содержание статьи">
         <span class="meta-label toc-heading">Содержание</span>
         <ol class="toc-list">
@@ -157,7 +169,7 @@ else Astro.response.headers.set("Cache-Control", "public, s-maxage=1, stale-whil
       </nav>
     )}
 
-    <div class="prose" set:html={htmlContent} />
+    <div class="prose" set:html={renderedHtml} />
 
     {post.tags && post.tags.length > 0 && (
       <div class="article-tags-bar">
