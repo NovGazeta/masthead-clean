@@ -32,6 +32,7 @@
     "test:ui": "playwright test --ui",
     "db:migrate": "npx tsx scripts/migrate-to-turso.ts",
     "r2:upload": "npx tsx scripts/upload-to-r2.ts ./.data/_assets _assets",
+    "r2:upload:ignore": "npx tsx scripts/upload-to-r2.ts ./.data/_assets _assets --ignore-dir tmp,drafts",
     "r2:upload:from": "npx tsx scripts/upload-to-r2.ts ./.data/_assets _assets --from-report ./r2-report.json",
     "r2:upload:dry": "npx tsx scripts/upload-to-r2.ts ./.data/_assets _assets --dry-run --report ./r2-report.json"
   },
