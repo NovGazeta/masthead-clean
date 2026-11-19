@@ -184,51 +184,122 @@ function buildHighlightedSnippet(post: Post, query: string): string {
   return safeText.replace(regex, "<mark>$1</mark>");
 }
 
-export function parseAuthors(authorsInput: any): AuthorSummary[] {
-  if (!authorsInput) return [];
-  if (Array.isArray(authorsInput)) {
-    return authorsInput.map((a) => ({
-      name: typeof a === "string" ? a : a.name,
-      slug: slugify(typeof a === "string" ? a : a.slug || a.name),
-      role: typeof a === "object" ? a.role : undefined,
-    }));
+function splitOutsideParens(input: string, delimiter = ","): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let depth = 0;
+
+  for (const char of input) {
+    if (char === "(") {
+      depth += 1;
+      current += char;
+    } else if (char === ")") {
+      depth = Math.max(0, depth - 1);
+      current += char;
+    } else if (char === delimiter && depth === 0) {
+      if (current.trim()) {
+        parts.push(current.trim());
+      }
+      current = "";
+    } else {
+      current += char;
+    }
   }
 
-  // Людмила Рыбина (Обозреватель, rybinal@yandex.ru), Марина Аромштам
-  // Александр Подрабинек (журналист, политзаключенный в СССР)
-  // Борис Вишневский (обозреватель, депутат ЗакСа Петербурга)
-  // Юрий Сафронов (обозреватель «Новой», журналист RFI, Париж)
-  // Юлия (Мартовалиева)
-  // Никита Кричевский (д.э.н., профессор)
-  // Роман Шлейнов («Важные истории», региональный редактор OCCRP)
-  // Леонид Никитинский (обозреватель, член СПЧ)
-  // Александр Лебедев (акционер «Новой газеты», д.э.н.)
-  // Виталий Ярошевский (Заместитель главного редактора, редактор отдела «Общество»)
-  // Александр Покровский (писатель, офицер-подводник)
-  // Сергей Канев (криминальный репортер, sbultik@gmail.com)
-  // Юрий Батурин (член-корреспондент РАН, летчик-космонавт РФ)
-  const authorsObj: Record<string, AuthorSummary> = {};
-  const matrix = String(authorsInput)
-    .split(",")
-    .map((m) =>
-      m
-        .trim()
-        .split("(")
-        .map((a) => a.replaceAll(")", "").trim())
-        .filter((f) => !!f),
-    );
-  for (let i = 0; i < matrix.length; i++) {
-    if (matrix[i].length < 1) continue;
-    const [name, role] = matrix[i];
-    const slug = toSlug(name);
-    authorsObj[slug] = {
-      name,
-      role,
-      slug,
-    };
+  if (current.trim()) {
+    parts.push(current.trim());
   }
-  return Object.values(authorsObj);
+
+  return parts;
 }
+
+export function parseAuthors(authorsInput: unknown): AuthorSummary[] {
+  if (!authorsInput) return [];
+
+  if (Array.isArray(authorsInput)) {
+    return authorsInput
+      .flatMap((item) => {
+        if (typeof item === "string") {
+          return parseAuthors(item);
+        }
+        if (item && typeof item === "object" && "name" in item) {
+          const name = String(item.name).trim();
+          if (!name) return [];
+          return [
+            {
+              name,
+              slug: "slug" in item && item.slug ? String(item.slug) : slugify(name),
+              role: "role" in item && item.role ? String(item.role).trim() : undefined,
+            },
+          ];
+        }
+        return [];
+      });
+  }
+
+  const rawString = String(authorsInput).trim();
+  if (!rawString) return [];
+
+  const authorsMap = new Map<string, AuthorSummary>();
+  const chunks = splitOutsideParens(rawString, ",");
+
+  for (const chunk of chunks) {
+    // Ищем первую пару скобок: "Имя Фамилия (роль, доп. инфо)"
+    const parenMatch = chunk.match(/^([^(]+?)\s*\(([^)]*)\)\s*$/);
+
+    let name: string;
+    let role: string | undefined;
+
+    if (parenMatch) {
+      name = parenMatch[1].trim();
+      const insideParens = parenMatch[2].trim();
+      role = insideParens || undefined;
+    } else {
+      // На случай незакрытой скобки или обычной строки без скобок
+      const openIdx = chunk.indexOf("(");
+      if (openIdx !== -1) {
+        name = chunk.slice(0, openIdx).trim();
+        const rest = chunk.slice(openIdx + 1).replace(/\)+$/, "").trim();
+        role = rest || undefined;
+      } else {
+        name = chunk.replace(/\)+$/, "").trim();
+        role = undefined;
+      }
+    }
+
+    if (!name) continue;
+
+    const slug = toSlug(name);
+    if (!slug) continue;
+
+    if (!authorsMap.has(slug)) {
+      authorsMap.set(slug, {
+        name,
+        slug,
+        role,
+      });
+    } else if (role && !authorsMap.get(slug)!.role) {
+      authorsMap.get(slug)!.role = role;
+    }
+  }
+
+  return Array.from(authorsMap.values());
+}
+
+// Людмила Рыбина (Обозреватель, rybinal@yandex.ru), Марина Аромштам
+// Александр Подрабинек (журналист, политзаключенный в СССР)
+// Борис Вишневский (обозреватель, депутат ЗакСа Петербурга)
+// Юрий Сафронов (обозреватель «Новой», журналист RFI, Париж)
+// Юлия (Мартовалиева)
+// Никита Кричевский (д.э.н., профессор)
+// Роман Шлейнов («Важные истории», региональный редактор OCCRP)
+// Леонид Никитинский (обозреватель, член СПЧ)
+// Александр Лебедев (акционер «Новой газеты», д.э.н.)
+// Виталий Ярошевский (Заместитель главного редактора, редактор отдела «Общество»)
+// Александр Покровский (писатель, офицер-подводник)
+// Сергей Канев (криминальный репортер, sbultik@gmail.com)
+// Юрий Батурин (член-корреспондент РАН, летчик-космонавт РФ)
+
 
 /**
  * Получение всех опубликованных постов из Turso с реляционными данными
