@@ -1,3 +1,4 @@
+import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
@@ -105,7 +106,13 @@ async function migrate() {
 
         for (const author of authorsList) {
           await turso.execute({
-            sql: `INSERT INTO authors (slug, name, role) VALUES (?, ?, ?) ON CONFLICT(slug) DO UPDATE SET name = excluded.name;`,
+            sql: `
+              INSERT INTO authors (slug, name, role)
+              VALUES (?, ?, ?)
+              ON CONFLICT(slug) DO UPDATE SET
+                name = excluded.name,
+                role = COALESCE(excluded.role, authors.role);
+            `,
             args: [author.slug, author.name, author.role || null],
           });
           const authorRes = await turso.execute({
@@ -130,12 +137,21 @@ async function migrate() {
         }
 
         // 4. Теги (M:N)
-        const tagsList: string[] = Array.isArray(data.tags) ? data.tags : [];
+        const tagsList: string[] = Array.isArray(data.tags)
+          ? data.tags
+          : typeof data.tags === "string"
+            ? data.tags.split(",").map((t) => t.trim()).filter(Boolean)
+            : [];
+
         for (const tagName of tagsList) {
-          const tagSlug = slugify(tagName);
+          const cleanTag = String(tagName).trim();
+          if (!cleanTag) continue;
+          const tagSlug = slugify(cleanTag);
+          if (!tagSlug) continue;
+
           await turso.execute({
             sql: `INSERT INTO tags (slug, name) VALUES (?, ?) ON CONFLICT(slug) DO UPDATE SET name = excluded.name;`,
-            args: [tagSlug, tagName],
+            args: [tagSlug, cleanTag],
           });
           const tagRes = await turso.execute({
             sql: `SELECT id FROM tags WHERE slug = ?;`,
