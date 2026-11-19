@@ -125,6 +125,17 @@ export function authorNameFromSlug(slug: string): string {
     .join("");
 }
 
+export function getPostUrl(slug: string, prefix = ""): string {
+  const cleanSlug = String(slug ?? "").trim().replace(/^\/+|\/+$/g, "");
+  const cleanPrefix = String(prefix ?? "").trim().replace(/^\/+|\/+$/g, "");
+
+  if (!cleanSlug) {
+    return cleanPrefix ? `/${cleanPrefix}` : "/";
+  }
+
+  return cleanPrefix ? `/${cleanPrefix}/${cleanSlug}` : `/${cleanSlug}`;
+}
+
 export function stripMarkdown(md: string): string {
   return md
     .replace(/[#>*_`~\[\]()!-]/g, " ")
