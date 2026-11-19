@@ -122,7 +122,7 @@ async function ensureSyncHashesTable(): Promise<void> {
   `);
 }
 
-async function loadExistingHashes(): Promise> {
+async function loadExistingHashes(): Promise {
   const map = new Map<string, string>();
 
   const res = await turso.execute(`
@@ -172,7 +172,9 @@ async function migrate() {
     const trimmedMarkdown = rawMarkdown.trim();
     const slug = String(data.slug || path.basename(file, path.extname(file))).trim();
 
-    const pubDateValue = data.date ? new Date(String(data.date)).toISOString() : new Date().toISOString();
+    const pubDateValue = data.date
+      ? new Date(String(data.date)).toISOString()
+      : new Date().toISOString();
     const nextHash = computeArticleHash(data, trimmedMarkdown, pubDateValue);
     const prevHash = existingHashes.get(slug);
 
@@ -352,9 +354,7 @@ async function migrate() {
 
       insertedOrUpdated++;
       hadChanges = true;
-      console.log(
-        `[Успешно] Мигрирована статья: ${slug} (изображений: ${extractedImages.length})`,
-      );
+      console.log(`[Успешно] Мигрирована статья: ${slug} (изображений: ${extractedImages.length})`);
     } catch (err) {
       console.error(`[Ошибка] Не удалось мигрировать статью ${slug}:`, err);
     }

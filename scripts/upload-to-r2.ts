@@ -499,7 +499,9 @@ async function runFromReport(fromReportPath: string, dryRun: boolean): Promise<v
     console.log(`${tag} (${sizeInfo}, ${contentType}): ${key} -> ${publicUrl}`);
   });
 
-  const prefixSummary = dryRun ? "[DRY-RUN] План по отчёту завершён. " : "Загрузка по отчёту завершена. ";
+  const prefixSummary = dryRun
+    ? "[DRY-RUN] План по отчёту завершён. "
+    : "Загрузка по отчёту завершена. ";
   console.log(
     `${prefixSummary}Загружено: ${stats.uploaded}, перезаписано: ${stats.overwritten}, пропущено: ${stats.skipped}.`,
   );
@@ -519,15 +521,10 @@ async function runWithConcurrency<T>(
     }
   }
 
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
-  );
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
 }
 
-async function writeDryRunReport(
-  targetFile: string,
-  report: DryRunReport,
-): Promise<void> {
+async function writeDryRunReport(targetFile: string, report: DryRunReport): Promise<void> {
   const resolved = path.resolve(targetFile);
   await fs.mkdir(path.dirname(resolved), { recursive: true });
   await fs.writeFile(resolved, JSON.stringify(report, null, 2), "utf-8");

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS tags (
   name TEXT NOT NULL
 );
 
+DROP TABLE IF EXISTS post_sync_hashes;
 DROP TABLE IF EXISTS posts;
 -- Основная таблица постов
 CREATE TABLE IF NOT EXISTS posts (
