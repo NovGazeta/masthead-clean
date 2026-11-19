@@ -1,4 +1,5 @@
 import "dotenv/config";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
@@ -18,10 +19,44 @@ interface ExtractedImage {
   position: number;
 }
 
-interface ExistingPostRecord {
-  id: number;
-  contentLength: number;
-  htmlLength: number;
+function sha256(value: string): string {
+  return crypto.createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function normalizeListField(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v).trim()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function computeArticleHash(
+  data: Record<string, unknown>,
+  trimmedMarkdown: string,
+  pubDateValue: string,
+): string {
+  const payload = JSON.stringify({
+    title: data.title ? String(data.title) : "Без названия",
+    subtitle: data.subtitle ? String(data.subtitle) : null,
+    source: data.source ? String(data.source) : null,
+    genre: data.genre ? String(data.genre) : null,
+    rubric: data.rubric ? String(data.rubric) : null,
+    authors: normalizeListField(data.authors),
+    tags: normalizeListField(data.tags),
+    featured: Boolean(data.featured),
+    draft: Boolean(data.draft),
+    date: data.date ? String(data.date) : null,
+    pubDate: pubDateValue,
+    content: trimmedMarkdown,
+  });
+
+  return sha256(payload);
 }
 
 function extractImagesFromMarkdown(markdown: string): ExtractedImage[] {
@@ -77,26 +112,30 @@ async function ensureImagesTable(): Promise<void> {
   `);
 }
 
-async function loadExistingPosts(): Promise> {
-  const map = new Map<string, ExistingPostRecord>();
+async function ensureSyncHashesTable(): Promise<void> {
+  await turso.execute(`
+    CREATE TABLE IF NOT EXISTS post_sync_hashes (
+      slug TEXT PRIMARY KEY,
+      content_hash TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+}
+
+async function loadExistingHashes(): Promise> {
+  const map = new Map<string, string>();
 
   const res = await turso.execute(`
-    SELECT
-      id,
-      slug,
-      COALESCE(LENGTH(content), 0) AS md_len,
-      COALESCE(LENGTH(htmlContent), 0) AS html_len
-    FROM posts;
+    SELECT slug, content_hash
+    FROM post_sync_hashes;
   `);
 
   for (const row of res.rows as any[]) {
     const slug = String(row.slug || "").trim();
-    if (!slug) continue;
-    map.set(slug, {
-      id: Number(row.id),
-      contentLength: Number(row.md_len ?? 0),
-      htmlLength: Number(row.html_len ?? 0),
-    });
+    const hash = String(row.content_hash || "").trim();
+    if (slug && hash) {
+      map.set(slug, hash);
+    }
   }
 
   return map;
@@ -109,14 +148,15 @@ async function migrate() {
   }
 
   await ensureImagesTable();
+  await ensureSyncHashesTable();
 
   const files = fs.readdirSync(articlesDir, { recursive: true }) as string[];
   const mdFiles = files.filter((f) => f.endsWith(".md") || f.endsWith(".mdx"));
 
   console.log(`📦 Найдено Markdown-файлов для миграции: ${mdFiles.length}`);
 
-  const existingPosts = await loadExistingPosts();
-  console.log(`⚡ В Turso уже существует постов: ${existingPosts.size}`);
+  const existingHashes = await loadExistingHashes();
+  console.log(`⚡ В таблице хэшей записей: ${existingHashes.size}`);
 
   let insertedOrUpdated = 0;
   let skipped = 0;
@@ -127,21 +167,22 @@ async function migrate() {
     const fileContent = fs.readFileSync(filePath, "utf-8");
 
     const parsed = matter(fileContent);
-    const data = parsed.data;
+    const data = parsed.data as Record<string, unknown>;
     const rawMarkdown = parsed.content.replaceAll("[](_assets/", "[](/_assets/");
     const trimmedMarkdown = rawMarkdown.trim();
     const slug = String(data.slug || path.basename(file, path.extname(file))).trim();
 
-    const existing = existingPosts.get(slug);
+    const pubDateValue = data.date ? new Date(String(data.date)).toISOString() : new Date().toISOString();
+    const nextHash = computeArticleHash(data, trimmedMarkdown, pubDateValue);
+    const prevHash = existingHashes.get(slug);
 
-    // Быстрая проверка до marked.parse() / extractImagesFromMarkdown() / SQL-записи
-    if (existing && !updateExisting && !forceAll) {
-      skipped++;
-      continue;
-    }
-
-    if (existing && updateExisting && !forceAll) {
-      if (existing.contentLength === trimmedMarkdown.length && existing.htmlLength > 0) {
+    // Быстрая проверка ДО marked.parse() / extractImagesFromMarkdown() / SQL-записи
+    if (!forceAll && prevHash) {
+      if (!updateExisting) {
+        skipped++;
+        continue;
+      }
+      if (prevHash === nextHash) {
         skipped++;
         continue;
       }
@@ -155,10 +196,11 @@ async function migrate() {
       // 1. Рубрика (1:M)
       let rubricId = null;
       if (data.rubric) {
-        const rubricSlug = slugify(data.rubric);
+        const rubricName = String(data.rubric);
+        const rubricSlug = slugify(rubricName);
         await turso.execute({
           sql: `INSERT INTO rubrics (slug, name) VALUES (?, ?) ON CONFLICT(slug) DO UPDATE SET name = excluded.name;`,
-          args: [rubricSlug, data.rubric],
+          args: [rubricSlug, rubricName],
         });
         const rubricRes = await turso.execute({
           sql: `SELECT id FROM rubrics WHERE slug = ?;`,
@@ -167,8 +209,8 @@ async function migrate() {
         rubricId = rubricRes.rows[0]?.id || null;
       }
 
-      // Подготовка даты публикации
-      const pubDateValue = data.date ? new Date(data.date).toISOString() : new Date().toISOString();
+      const authorsRaw = normalizeListField(data.authors);
+      const tagsRaw = normalizeListField(data.tags);
 
       // 2. Вставка / обновление поста в таблицу posts
       await turso.execute({
@@ -196,19 +238,19 @@ async function migrate() {
         `,
         args: [
           slug,
-          data.title || "Без названия",
-          data.subtitle || null,
-          data.source || null,
-          data.genre || null,
-          Array.isArray(data.authors) ? data.authors.join(", ") : data.authors || null,
-          Array.isArray(data.tags) ? data.tags.join(", ") : data.tags || null,
+          data.title ? String(data.title) : "Без названия",
+          data.subtitle ? String(data.subtitle) : null,
+          data.source ? String(data.source) : null,
+          data.genre ? String(data.genre) : null,
+          authorsRaw.length > 0 ? authorsRaw.join(", ") : null,
+          tagsRaw.length > 0 ? tagsRaw.join(", ") : null,
           calculateReadingTime(plainText) || null,
           trimmedMarkdown,
           htmlContent || null,
           rubricId,
-          !!data.featured ? 1 : 0,
-          !!data.draft ? 1 : 0,
-          data.date || pubDateValue,
+          data.featured ? 1 : 0,
+          data.draft ? 1 : 0,
+          data.date ? String(data.date) : pubDateValue,
           pubDateValue,
         ],
       });
@@ -235,9 +277,7 @@ async function migrate() {
         }
 
         // 3. Авторы (M:N) и их связь с рубриками
-        const authorsList = Array.isArray(data.authors)
-          ? parseAuthors(data.authors.join(","))
-          : parseAuthors(data.authors);
+        const authorsList = parseAuthors(authorsRaw.join(","));
 
         for (const author of authorsList) {
           await turso.execute({
@@ -272,16 +312,7 @@ async function migrate() {
         }
 
         // 4. Теги (M:N)
-        const tagsList: string[] = Array.isArray(data.tags)
-          ? data.tags
-          : typeof data.tags === "string"
-            ? data.tags
-                .split(",")
-                .map((t) => t.trim())
-                .filter(Boolean)
-            : [];
-
-        for (const tagName of tagsList) {
+        for (const tagName of tagsRaw) {
           const cleanTag = String(tagName).trim();
           if (!cleanTag) continue;
           const tagSlug = slugify(cleanTag);
@@ -305,11 +336,18 @@ async function migrate() {
           }
         }
 
-        existingPosts.set(slug, {
-          id: postId,
-          contentLength: trimmedMarkdown.length,
-          htmlLength: String(htmlContent || "").length,
+        // Сохраняем актуальный sha256 хэш статьи
+        await turso.execute({
+          sql: `
+            INSERT INTO post_sync_hashes (slug, content_hash, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(slug) DO UPDATE SET
+              content_hash = excluded.content_hash,
+              updated_at = excluded.updated_at;
+          `,
+          args: [slug, nextHash, new Date().toISOString()],
         });
+        existingHashes.set(slug, nextHash);
       }
 
       insertedOrUpdated++;
@@ -323,7 +361,7 @@ async function migrate() {
   }
 
   console.log(
-    `📊 Итог: обработано ${insertedOrUpdated}, пропущено (уже в БД): ${skipped}.`,
+    `📊 Итог: обработано ${insertedOrUpdated}, пропущено (без изменений / уже в БД): ${skipped}.`,
   );
 
   // Переиндексация FTS5 (только если были изменения или передан --force-all)
