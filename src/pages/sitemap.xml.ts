@@ -16,7 +16,7 @@ function escapeXml(value: string): string {
 export const GET: APIRoute = async ({ site, url }) => {
   const baseUrl = (site?.toString() || url.origin).replace(/\/$/, "");
 
-  const staticSections = ["/", "/authors", "/archive", "/search"];
+  const staticSections = ["/", "/about", "/authors", "/archive", "/search"];
   const sectionUrls = new Set<string>(staticSections.map((path) => `${baseUrl}${path}`));
 
   try {
