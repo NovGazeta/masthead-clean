@@ -24,7 +24,7 @@ function parseCliArgs(argv: string[]): CliOptions {
   }
 
   return {
-    outDir: path.resolve(positional[0] || "./backups/turso"),
+    outDir: path.resolve(positional[0] || "./.data/backups/turso"),
     skipR2,
   };
 }
