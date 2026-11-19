@@ -1,59 +1,71 @@
 import type { APIRoute } from "astro";
+import rss from "@astrojs/rss";
+import pkg from "@/lib/pkg";
 import { getAllPosts } from "@/lib/posts";
+import { applyAssetBaseUrlToHtml, toAbsoluteAssetUrl } from "@/lib/assets";
 
-// Экранирование спецсимволов для корректного XML
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+const RSS_MAX_ITEMS = 20;
+
+function makeHtmlImagesAbsolute(html: string, baseSite: string): string {
+  const withCdn = applyAssetBaseUrlToHtml(html);
+  if (!baseSite) return withCdn;
+
+  return withCdn.replace(
+    /(<img\b[^>]*?\bsrc=["'])([^"']+)(["'][^>]*>)/gi,
+    (_full, prefix: string, src: string, suffix: string) => {
+      return `${prefix}${toAbsoluteAssetUrl(src, baseSite)}${suffix}`;
+    },
+  );
 }
 
-export const GET: APIRoute = async ({ site, url }) => {
-  const posts = await getAllPosts();
+function guessMimeType(url: string): string {
+  const clean = url.split("?")[0].toLowerCase();
+  if (clean.endsWith(".png")) return "image/png";
+  if (clean.endsWith(".webp")) return "image/webp";
+  if (clean.endsWith(".gif")) return "image/gif";
+  if (clean.endsWith(".svg")) return "image/svg+xml";
+  return "image/jpeg";
+}
 
-  // Базовый URL сайта (берется из astro.config.mjs или из текущего запроса)
-  const baseUrl = (site?.toString() || url.origin).replace(/\/$/, "");
-  const lastBuildDate = posts[0]?.pubDate.toUTCString() || new Date().toUTCString();
+function escapeXmlAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
-  const itemsXml = posts
-    .map((post) => {
-      const postUrl = `${baseUrl}/articles/${encodeURIComponent(post.slug)}`;
-      const pubDate = post.pubDate.toUTCString();
+export const GET: APIRoute = async (context) => {
+  const allPosts = await getAllPosts();
+  const latestPosts = allPosts.slice(0, RSS_MAX_ITEMS);
+  const siteUrl = (context.site ?? new URL(context.request.url)).toString();
 
-      return `
-    <item>
-      <title>${escapeXml(post.title)}</title>
-      <link>${postUrl}</link>
-      <guid isPermaLink="true">${postUrl}</guid>
-      <pubDate>${pubDate}</pubDate>
-      <category>${escapeXml(post.category)}</category>
-      <author>${escapeXml(post.author)}</author>
-      <description>${escapeXml(post.description)}</description>
-      <content:encoded><![CDATA[${post.htmlContent}]]></content:encoded>
-    </item>`;
-    })
-    .join("");
+  return rss({
+    title: pkg.title,
+    description: pkg.description,
+    site: siteUrl,
+    items: latestPosts.map((post) => {
+      const link = `/articles/${post.slug}`;
+      const imageUrl = toAbsoluteAssetUrl(post.image || post.images?.[0]?.url, siteUrl);
+      const fullHtml = makeHtmlImagesAbsolute(post.htmlContent, siteUrl);
+      const pubDate =
+        post.pubDate instanceof Date && !Number.isNaN(post.pubDate.getTime())
+          ? post.pubDate
+          : new Date();
 
-  const rssXml = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom">
-  <channel>
-    <title>THE Журнал</title>
-    <description>Журнал о цифровом ремесле, культуре и медленном чтении</description>
-    <link>${baseUrl}/</link>
-    <atom:link href="${baseUrl}/rss.xml" rel="self" type="application/rss+xml" />
-    <language>ru</language>
-    <lastBuildDate>${lastBuildDate}</lastBuildDate>${itemsXml}
-  </channel>
-</rss>`;
+      const enclosureXml = imageUrl
+        ? `<enclosure url="${escapeXmlAttr(imageUrl)}" type="${guessMimeType(imageUrl)}" length="0" />`
+        : "";
 
-  return new Response(rssXml.trim(), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/xml; charset=utf-8",
-      "Cache-Control": "public, max-age=300",
-    },
+      return {
+        title: post.title,
+        description: post.subtitle || post.plainText.slice(0, 240),
+        pubDate,
+        link,
+        content: fullHtml,
+        customData: enclosureXml,
+      };
+    }),
   });
 };
