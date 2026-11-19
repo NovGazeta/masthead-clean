@@ -157,7 +157,9 @@ async function runBackup(): Promise<void> {
 
         for (const dataRow of dataRes.rows as any[]) {
           const vals = columns.map((c) => escapeSqlValue(dataRow[c])).join(", ");
-          lines.push(`INSERT INTO "${tableName.replace(/"/g, '""')}" (${colList}) VALUES (${vals});`);
+          lines.push(
+            `INSERT INTO "${tableName.replace(/"/g, '""')}" (${colList}) VALUES (${vals});`,
+          );
         }
         lines.push("");
       }

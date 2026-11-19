@@ -55,6 +55,20 @@ function quoteIdent(ident: string): string {
   return `"${ident.replace(/"/g, '""')}"`;
 }
 
+function unquoteIdent(ident: string): string {
+  const trimmed = ident.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("`") && trimmed.endsWith("`"))
+  ) {
+    return trimmed.slice(1, -1).replace(/""/g, '"');
+  }
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
 function createR2Client(): S3Client {
   const accountId = process.env.R2_ACCOUNT_ID;
   const accessKeyId = process.env.R2_ACCESS_KEY_ID;
@@ -104,7 +118,9 @@ async function downloadLatestBackupFromR2(): Promise<string> {
   const bucketName = process.env.R2_BUCKET_NAME!;
   const s3 = createR2Client();
 
-  console.log(`☁️ Поиск последнего бэкапа в R2 (bucket="${bucketName}", prefix="${R2_BACKUP_PREFIX}")...`);
+  console.log(
+    `☁️ Поиск последнего бэкапа в R2 (bucket="${bucketName}", prefix="${R2_BACKUP_PREFIX}")...`,
+  );
 
   const candidates: Array<{ key: string; lastModified: number }> = [];
   let continuationToken: string | undefined;
@@ -163,8 +179,28 @@ async function downloadLatestBackupFromR2(): Promise<string> {
   const targetFile = path.join(localDir, `from-r2-${baseName}`);
   await fs.writeFile(targetFile, sqlContent, "utf-8");
 
-  console.log(`💾 Бэкап сохранён локально: ${targetFile} (${Buffer.byteLength(sqlContent, "utf-8")} B)`);
+  console.log(
+    `💾 Бэкап сохранён локально: ${targetFile} (${Buffer.byteLength(sqlContent, "utf-8")} B)`,
+  );
   return targetFile;
+}
+
+function isIgnorableStandaloneStatement(stmt: string): boolean {
+  const normalized = stmt
+    .replace(/--[^\n]*\n?/g, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .trim()
+    .replace(/;+$/, "")
+    .trim();
+
+  if (!normalized) return true;
+
+  return (
+    /^BEGIN(\s+(DEFERRED|IMMEDIATE|EXCLUSIVE))?(\s+TRANSACTION)?$/i.test(normalized) ||
+    /^COMMIT(\s+TRANSACTION)?$/i.test(normalized) ||
+    /^END(\s+TRANSACTION)?$/i.test(normalized) ||
+    /^PRAGMA\s+foreign_keys\s*=\s*(ON|OFF|1|0)$/i.test(normalized)
+  );
 }
 
 /**
@@ -172,7 +208,7 @@ async function downloadLatestBackupFromR2(): Promise<string> {
  * - строковых литералов ('...' и экранированных '')
  * - идентификаторов в двойных кавычках ("..." и "") или квадратных скобках [...]
  * - блочных комментариев /* ... *\/ и однострочных -- ...
- * При этом сохраняет BEGIN ... END внутри триггеров.
+ * Сохраняет BEGIN ... END внутри триггеров и отбрасывает внешние BEGIN/COMMIT/END/PRAGMA foreign_keys.
  */
 function splitSqlStatements(sql: string): string[] {
   const statements: string[] = [];
@@ -237,7 +273,6 @@ function splitSqlStatements(sql: string): string[] {
       continue;
     }
 
-    // Вне строк и комментариев
     if (ch === "-" && next === "-") {
       inLineComment = true;
       i++;
@@ -268,7 +303,6 @@ function splitSqlStatements(sql: string): string[] {
       continue;
     }
 
-    // Отслеживание BEGIN ... END внутри триггеров (чтобы ';' внутри триггера не резал стейтмент)
     if (isWordChar(ch)) {
       const prev = sql[i - 1] ?? "";
       if (!isWordChar(prev)) {
@@ -283,7 +317,7 @@ function splitSqlStatements(sql: string): string[] {
 
     if (ch === ";" && triggerBlockDepth === 0) {
       const trimmed = current.trim();
-      if (trimmed) {
+      if (trimmed && !isIgnorableStandaloneStatement(trimmed)) {
         statements.push(trimmed);
       }
       current = "";
@@ -294,14 +328,25 @@ function splitSqlStatements(sql: string): string[] {
   }
 
   const tail = current.trim();
-  if (tail) {
+  if (tail && !isIgnorableStandaloneStatement(tail)) {
     statements.push(tail);
   }
 
   return statements;
 }
 
-async function getUserTables(): Promise<string[]> {
+function extractInsertTableName(stmt: string): string | null {
+  const match = stmt.match(
+    /^INSERT\s+(?:OR\s+(?:ABORT|FAIL|IGNORE|REPLACE|ROLLBACK)\s+)?INTO\s+("[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z0-9_]+)/i,
+  );
+  if (!match?.[1]) return null;
+  return unquoteIdent(match[1]);
+}
+
+/**
+ * Сортирует таблицы так, чтобы родительские таблицы шли раньше дочерних (по внешним ключам).
+ */
+async function getTablesOrderedByDependency(): Promise<string[]> {
   const res = await turso.execute(`
     SELECT name
     FROM sqlite_master
@@ -312,9 +357,90 @@ async function getUserTables(): Promise<string[]> {
     ORDER BY name;
   `);
 
-  return (res.rows as any[])
-    .map((r) => String(r.name || "").trim())
-    .filter(Boolean);
+  const tables = (res.rows as any[]).map((r) => String(r.name || "").trim()).filter(Boolean);
+
+  // parentsMap.get(childTable) = Set of parent tables that child references
+  const parentsMap = new Map<string, Set<string>>();
+  for (const t of tables) {
+    parentsMap.set(t, new Set<string>());
+  }
+
+  for (const t of tables) {
+    try {
+      const fkRes = await turso.execute(`PRAGMA foreign_key_list(${quoteIdent(t)});`);
+      for (const fk of fkRes.rows as any[]) {
+        const parentTable = String(fk.table || "").trim();
+        if (parentTable && parentTable !== t && parentsMap.has(parentTable)) {
+          parentsMap.get(t)!.add(parentTable);
+        }
+      }
+    } catch {
+      // Игнорируем если PRAGMA недоступна для конкретной таблицы
+    }
+  }
+
+  const ordered: string[] = [];
+  const visited = new Set<string>();
+  const visiting = new Set<string>();
+
+  function visit(table: string): void {
+    if (visited.has(table)) return;
+    if (visiting.has(table)) return; // защита от циклических ссылок
+
+    visiting.add(table);
+    for (const parent of parentsMap.get(table) || []) {
+      visit(parent);
+    }
+    visiting.delete(table);
+    visited.add(table);
+    ordered.push(table);
+  }
+
+  for (const t of tables) {
+    visit(t);
+  }
+
+  return ordered;
+}
+
+/**
+ * Упорядочивает стейтменты: сначала DDL (CREATE TABLE / INDEX / TRIGGER),
+ * затем INSERT по родительским таблицам перед дочерними, затем прочие операторы.
+ */
+async function orderStatementsForRestore(statements: string[]): Promise<string[]> {
+  const orderedTables = await getTablesOrderedByDependency();
+  const rankMap = new Map<string, number>();
+  orderedTables.forEach((t, idx) => rankMap.set(t, idx));
+
+  const ddl: string[] = [];
+  const inserts: Array<{ stmt: string; rank: number; idx: number }> = [];
+  const other: string[] = [];
+
+  statements.forEach((stmt, idx) => {
+    const upper = stmt.trim().toUpperCase();
+    if (
+      upper.startsWith("CREATE TABLE") ||
+      upper.startsWith("CREATE UNIQUE INDEX") ||
+      upper.startsWith("CREATE INDEX") ||
+      upper.startsWith("CREATE TRIGGER")
+    ) {
+      ddl.push(stmt);
+      return;
+    }
+
+    const insertTable = extractInsertTableName(stmt);
+    if (insertTable) {
+      const rank = rankMap.has(insertTable) ? rankMap.get(insertTable)! : Number.MAX_SAFE_INTEGER;
+      inserts.push({ stmt, rank, idx });
+      return;
+    }
+
+    other.push(stmt);
+  });
+
+  inserts.sort((a, b) => (a.rank !== b.rank ? a.rank - b.rank : a.idx - b.idx));
+
+  return [...ddl, ...inserts.map((x) => x.stmt), ...other];
 }
 
 async function confirmTruncate(tables: string[]): Promise<boolean> {
@@ -339,34 +465,34 @@ async function confirmTruncate(tables: string[]): Promise<boolean> {
 }
 
 async function truncateUserTables(dryRun: boolean, autoYes: boolean): Promise<boolean> {
-  const tables = await getUserTables();
+  const parentFirstTables = await getTablesOrderedByDependency();
+  // При удалении идём от дочерних таблиц к родительским
+  const childFirstTables = [...parentFirstTables].reverse();
 
-  if (tables.length === 0) {
+  if (childFirstTables.length === 0) {
     console.log("ℹ️ Пользовательские таблицы для очистки не найдены.");
     return true;
   }
 
   if (dryRun) {
     console.log(
-      `[DRY-RUN] Будут очищены таблицы (${tables.length}) с PRAGMA foreign_keys = OFF: ${tables.join(", ")}`,
+      `[DRY-RUN] Будут очищены таблицы (${childFirstTables.length}) в порядке от дочерних к родительским: ${childFirstTables.join(", ")}`,
     );
     return true;
   }
 
   if (!autoYes) {
-    const confirmed = await confirmTruncate(tables);
+    const confirmed = await confirmTruncate(childFirstTables);
     if (!confirmed) {
       console.log("🛑 Очистка таблиц и восстановление отменены пользователем.");
       return false;
     }
   }
 
-  console.log(`🧹 Очистка таблиц (${tables.length}) перед восстановлением...`);
+  console.log(`🧹 Очистка таблиц (${childFirstTables.length}) перед восстановлением...`);
 
-  const clearStatements: string[] = [
-    "PRAGMA foreign_keys = OFF;",
-    ...tables.map((t) => `DELETE FROM ${quoteIdent(t)};`),
-  ];
+  const deleteStatements = childFirstTables.map((t) => `DELETE FROM ${quoteIdent(t)};`);
+  await turso.batch(deleteStatements, "write");
 
   const seqRes = await turso.execute(`
     SELECT name
@@ -376,17 +502,14 @@ async function truncateUserTables(dryRun: boolean, autoYes: boolean): Promise<bo
   `);
 
   if (seqRes.rows.length > 0) {
-    const placeholders = tables.map(() => "?").join(", ");
+    const placeholders = childFirstTables.map(() => "?").join(", ");
     await turso.execute({
       sql: `DELETE FROM sqlite_sequence WHERE name IN (${placeholders});`,
-      args: tables,
+      args: childFirstTables,
     });
   }
 
-  clearStatements.push("PRAGMA foreign_keys = ON;");
-  await turso.batch(clearStatements, "write");
-
-  console.log(`✅ Таблицы очищены: ${tables.join(", ")}`);
+  console.log(`✅ Таблицы очищены: ${childFirstTables.join(", ")}`);
   return true;
 }
 
@@ -408,6 +531,36 @@ async function rebuildFtsIndex(): Promise<void> {
   console.log("✨ Индекс posts_fts успешно пересобран!");
 }
 
+async function executeStatementsSafely(statements: string[]): Promise<void> {
+  const batchSize = 50;
+  let executedCount = 0;
+
+  for (let i = 0; i < statements.length; i += batchSize) {
+    const chunk = statements.slice(i, i + batchSize);
+    try {
+      await turso.batch(chunk, "write");
+      executedCount += chunk.length;
+    } catch (batchErr) {
+      // Если батч упал, пробуем выполнить стейтменты по одному, чтобы точно увидеть проблемный запрос
+      for (const stmt of chunk) {
+        try {
+          await turso.execute(stmt);
+          executedCount += 1;
+        } catch (singleErr) {
+          console.error(
+            `❌ Ошибка в операторе [${executedCount + 1}/${statements.length}]: ${stmt.slice(0, 300)}`,
+          );
+          throw singleErr ?? batchErr;
+        }
+      }
+    }
+
+    if (executedCount % 250 === 0 || executedCount === statements.length) {
+      console.log(`⏳ Выполнено операторов: ${executedCount}/${statements.length}`);
+    }
+  }
+}
+
 async function runRestore(): Promise<void> {
   const { sqlFilePath, latestFromR2, dryRun, skipFtsRebuild, truncateFirst, autoYes } =
     parseCliArgs(process.argv.slice(2));
@@ -419,9 +572,7 @@ async function runRestore(): Promise<void> {
     process.exit(1);
   }
 
-  const resolvedSqlPath = latestFromR2
-    ? await downloadLatestBackupFromR2()
-    : sqlFilePath;
+  const resolvedSqlPath = latestFromR2 ? await downloadLatestBackupFromR2() : sqlFilePath;
 
   try {
     await fs.access(resolvedSqlPath);
@@ -431,12 +582,14 @@ async function runRestore(): Promise<void> {
   }
 
   const rawSql = await fs.readFile(resolvedSqlPath, "utf-8");
-  const statements = splitSqlStatements(rawSql);
+  const rawStatements = splitSqlStatements(rawSql);
 
-  if (statements.length === 0) {
+  if (rawStatements.length === 0) {
     console.log("⚠️ В SQL-файле не найдено операторов для выполнения.");
     return;
   }
+
+  const statements = await orderStatementsForRestore(rawStatements);
 
   console.log(
     `${dryRun ? "[DRY-RUN] " : ""}Найдено SQL-операторов в файле ${path.basename(resolvedSqlPath)}: ${statements.length}`,
@@ -463,18 +616,7 @@ async function runRestore(): Promise<void> {
     return;
   }
 
-  const batchSize = 50;
-  let executedCount = 0;
-
-  for (let i = 0; i < statements.length; i += batchSize) {
-    const chunk = statements.slice(i, i + batchSize);
-    await turso.batch(chunk, "write");
-    executedCount += chunk.length;
-
-    if (executedCount % 250 === 0 || executedCount === statements.length) {
-      console.log(`⏳ Выполнено операторов: ${executedCount}/${statements.length}`);
-    }
-  }
+  await executeStatementsSafely(statements);
 
   if (!skipFtsRebuild) {
     await rebuildFtsIndex();
