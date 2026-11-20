@@ -30,6 +30,27 @@ function sha256(value: string): string {
   return crypto.createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+function buildArticleSlug(relativeFile: string, frontmatterSlug: unknown): string {
+  const normalizedRel = relativeFile.replace(/\\/g, "/").replace(/^\/+/, "");
+  const withoutExt = normalizedRel.replace(/\.[^./]+$/u, "");
+  const segments = withoutExt.split("/").filter(Boolean);
+
+  const customSlug = frontmatterSlug != null ? String(frontmatterSlug).trim() : "";
+  if (customSlug) {
+    const normalizedCustom = customSlug.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    if (normalizedCustom.includes("/")) {
+      return `/${normalizedCustom}`;
+    }
+    if (segments.length > 0) {
+      segments[segments.length - 1] = normalizedCustom;
+    } else {
+      segments.push(normalizedCustom);
+    }
+  }
+
+  return `/${segments.join("/")}`;
+}
+
 function normalizeListField(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.map((v) => String(v).trim()).filter(Boolean);
@@ -314,7 +335,7 @@ async function migrate() {
     const data = parsed.data as Record<string, unknown>;
     const rawMarkdown = parsed.content.replaceAll("[](_assets/", "[](/_assets/");
     const trimmedMarkdown = rawMarkdown.trim();
-    const slug = String(data.slug || path.basename(file, path.extname(file))).trim();
+    const slug = buildArticleSlug(file, data.slug);
 
     const pubDateValue = data.date
       ? new Date(String(data.date)).toISOString()
